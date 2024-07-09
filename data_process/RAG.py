@@ -11,7 +11,7 @@ def calculate_similarity(prompt, chunks):
     similarities = util.pytorch_cos_sim(prompt_embedding, chunk_embeddings)[0]
     return similarities
 
-# Load the JSON data
+# Load the JSON database
 with open('car_stats.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
