@@ -10,7 +10,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 load_dotenv()
 
 # Define file path and collection name
-file_path = "split_car_stats.json"
+file_path = "Data/split_car_stats.json"
 collection_name = "test"
 
 # Load the JSON file
@@ -18,11 +18,11 @@ loader = JSONLoader(file_path=file_path, jq_schema=".[]", text_content=False)
 documents = loader.load()
 
 # Initialize the SentenceTransformer model for embeddings
-model = HuggingFaceEmbeddings(model_name = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2') 
-#model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+model = HuggingFaceEmbeddings(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+# model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
 
 # Initialize persistent Chroma client
-persist_directory = "/Users/barryli/Desktop/Fuck/chroma/test"
+persist_directory = "./database"
 
 # Initialize persistent Chroma client
 persistent_client = chromadb.PersistentClient(path=persist_directory)
@@ -47,12 +47,14 @@ for doc in documents:
     content_list.append(content)
     metadata = {
         "page_number": content_dict.get("page_number"),
-        "car_stats": json.dumps(content_dict.get("car_stats", "N/A")) if isinstance(content_dict.get("car_stats"), list) else content_dict.get("car_stats", "N/A"),
+        "car_stats": json.dumps(content_dict.get("car_stats", "N/A")) if isinstance(content_dict.get("car_stats"),
+                                                                                    list) else content_dict.get(
+            "car_stats", "N/A"),
     }
-    #print(content[:100])
-    #print(metadata)
+    # print(content[:100])
+    # print(metadata)
     metadata_list.append(metadata)
-    #break
+    # break
 
 # Generate embeddings for the content
 embeddings_list = model.embed_documents(content_list)

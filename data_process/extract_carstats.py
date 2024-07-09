@@ -74,10 +74,10 @@ if __name__ == "__main__":
     output_file_path = "./car_stats.json"
 
     data = load_json(input_file_path)
-    print("JSON data loaded.")
+    print("JSON database loaded.")
 
     processed_data = preprocess_data(data)
     print("Data preprocessing complete.")
 
     save_json(processed_data, output_file_path)
-    print(f"Processed data with car stats has been saved to {output_file_path}")
+    print(f"Processed database with car stats has been saved to {output_file_path}")
