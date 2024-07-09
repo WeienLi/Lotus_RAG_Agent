@@ -1,3 +1,3 @@
-file_path: "/Users/alain/Desktop/project/llm_virtual_human/RAG_Agent/Data/split_car_stats.json"
-persist_directory: "/Users/alain/Desktop/project/llm_virtual_human/database/chroma"
-embeddings_model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+file_path: ""
+persist_directory: ""
+embeddings_model_name: ""
