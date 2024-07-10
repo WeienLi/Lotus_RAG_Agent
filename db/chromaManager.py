@@ -2,7 +2,6 @@ import sys
 import os
 import json
 import logging
-import psutil
 import yaml
 from tqdm import tqdm
 from langchain_community.document_loaders import JSONLoader
@@ -27,26 +26,13 @@ class ChromaManager:
         self.collection_name = collection_name
         self.batch_size = batch_size
 
-        mem = psutil.virtual_memory()
-        available_memory_gb = mem.available / (1024 ** 3)
-        logging.info(f"Initializing ChromaManager - Available memory: {available_memory_gb:.2f} GB")
+        logging.info("Initializing ChromaManager")
 
     def load_model(self):
         try:
             logging.info("Loading embedding model...")
 
-            mem_before = psutil.virtual_memory()
-            available_memory_before_gb = mem_before.available / (1024 ** 3)
-            logging.info(f"Memory before loading model: {available_memory_before_gb:.2f} GB")
-
             self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
-
-            mem_after = psutil.virtual_memory()
-            available_memory_after_gb = mem_after.available / (1024 ** 3)
-            logging.info(f"Memory after loading model: {available_memory_after_gb:.2f} GB")
-
-            memory_used_gb = available_memory_before_gb - available_memory_after_gb
-            logging.info(f"Memory used by model: {memory_used_gb:.2f} GB")
 
             self.chroma_db = Chroma(
                 embedding_function=self.embeddings,
@@ -107,7 +93,7 @@ def main():
 
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
-    # manager.load_and_store_data()
+    manager.load_and_store_data()
     manager.check_db()
 
     test_prompt = "What is Mark"
