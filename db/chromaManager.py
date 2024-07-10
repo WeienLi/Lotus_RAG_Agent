@@ -73,6 +73,7 @@ class ChromaManager:
                 "page_number": content_dict.get("page_number"),
                 "car_stats": json.dumps(content_dict.get("car_stats", "N/A")) if isinstance(
                     content_dict.get("car_stats"), list) else content_dict.get("car_stats", "N/A"),
+                "id": str(content_dict.get("id"))
             }
             metadata_list.append(metadata)
 
@@ -81,10 +82,17 @@ class ChromaManager:
             batch_metadata = metadata_list[i:i + self.batch_size]
             embeddings_list = self.embeddings.embed_documents(batch_contents)
             for content, embedding, metadata in zip(batch_contents, embeddings_list, batch_metadata):
-                self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata])
+                self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata], ids=[metadata['id']])
 
         self.chroma_db.persist()
         logging.info("Chroma vector database created and persisted successfully.")
+
+    def insert(self, documents, metadatas):
+        embeddings_list = self.embeddings.embed_documents(documents)
+        for content, embedding, metadata, doc_id in zip(documents, embeddings_list, metadatas):
+            self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata], ids=[metadata['id']])
+        self.chroma_db.persist()
+        logging.info("New documents inserted successfully.")
 
     def check_db(self):
         logging.info(f"There are {self.chroma_db._collection.count()} in the collection")
@@ -99,7 +107,7 @@ def main():
 
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
-    manager.load_and_store_data()
+    # manager.load_and_store_data()
     manager.check_db()
 
     test_prompt = "What is Mark"
