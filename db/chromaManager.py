@@ -8,6 +8,7 @@ from langchain_community.document_loaders import JSONLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -86,6 +87,43 @@ class ChromaManager:
     def retrieve_top_k(self, prompt, k=5):
         return self.chroma_db.similarity_search_with_score(prompt, k=k)
 
+    def evaluate_retrieval(self, queries, top_k=5):
+        total_queries = len(queries)
+        score = 0.0
+        id_match_num = 0
+        page_match_num = 0
+        for query in queries:
+            question = query["question"]
+            expected_page_num = query["page_num"]
+            expected_id = query["id"]
+
+            results = self.retrieve_top_k(question, k=top_k)
+            id_found = False
+            page_num_found = False
+            for result, _ in results:
+                if str(result.metadata['id']) == str(expected_id):
+                    id_found = True
+                    score += 1
+                    id_match_num += 1
+                    break
+                elif str(result.metadata['page_number']) == str(expected_page_num):
+                    page_num_found = True
+
+            if not id_found and page_num_found:
+                score += 1
+                page_match_num += 1
+
+        accuracy = score / total_queries
+
+        logging.info(
+            f"Total Query: {total_queries}, "
+            f"Top {top_k} Accuracy: {accuracy * 100:.2f}%, "
+            f"id Match Num: {id_match_num}, "
+            f"Page Match Num: {page_match_num}"
+        )
+
+        return accuracy
+
 
 def main():
     config_path = "../config/config.yaml"
@@ -93,12 +131,19 @@ def main():
 
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
-    manager.load_and_store_data()
-    manager.check_db()
+    # manager.load_and_store_data()
+    # manager.check_db()
 
-    test_prompt = "What is Mark"
-    result = manager.retrieve_top_k(test_prompt)
-    print(result)
+    # test_prompt = "What is Mark"
+    # result = manager.retrieve_top_k(test_prompt)
+    # print(result)
+
+    test_file_path = '../Data/test_data/rag_test_part1.json'
+    with open(test_file_path, 'r') as file:
+        test_queries = json.load(file)
+
+    accuracy = manager.evaluate_retrieval(test_queries, 5)
+    print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
 if __name__ == "__main__":
