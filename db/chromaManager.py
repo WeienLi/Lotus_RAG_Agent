@@ -105,6 +105,7 @@ class ChromaManager:
                     id_found = True
                     score += 1
                     id_match_num += 1
+                    page_match_num += 1
                     break
                 elif str(result.metadata['page_number']) == str(expected_page_num):
                     page_num_found = True
