@@ -131,4 +131,5 @@ dmypy.json
 .ipynb_checkpoints/
 
 # Additional
-Data
+#Data
+config
