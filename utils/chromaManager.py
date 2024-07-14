@@ -2,19 +2,13 @@ import sys
 import os
 import json
 import logging
-import psutil
 import yaml
 from tqdm import tqdm
 from langchain_community.document_loaders import JSONLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain_community.llms import Ollama
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,28 +27,13 @@ class ChromaManager:
         self.collection_name = collection_name
         self.batch_size = batch_size
 
-        mem = psutil.virtual_memory()
-        available_memory_gb = mem.available / (1024 ** 3)
-        logging.info(f"Initializing ChromaManager - Available memory: {available_memory_gb:.2f} GB")
+        logging.info("Initializing ChromaManager")
 
-    def load_model(self, model_name="gemma2:9b"):
+    def load_model(self):
         try:
             logging.info("Loading embedding model...")
 
-            mem_before = psutil.virtual_memory()
-            available_memory_before_gb = mem_before.available / (1024 ** 3)
-            logging.info(f"Memory before loading model: {available_memory_before_gb:.2f} GB")
-
             self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
-            self.llm = Ollama(model=model_name, callbacks=[StreamingStdOutCallbackHandler()])
-            print(f"run {model_name}")
-
-            mem_after = psutil.virtual_memory()
-            available_memory_after_gb = mem_after.available / (1024 ** 3)
-            logging.info(f"Memory after loading model: {available_memory_after_gb:.2f} GB")
-
-            memory_used_gb = available_memory_before_gb - available_memory_after_gb
-            logging.info(f"Memory used by model: {memory_used_gb:.2f} GB")
 
             self.chroma_db = Chroma(
                 embedding_function=self.embeddings,
@@ -108,20 +87,43 @@ class ChromaManager:
     def retrieve_top_k(self, prompt, k=5):
         return self.chroma_db.similarity_search_with_score(prompt, k=k)
 
-    def build_chain(self, k, prompt_temp):
-        """
-        self.qa_chain = RetrievalQA.from_chain_type(
-        self.llm,
-        retriever=self.chroma_db.as_retriever(search_kwargs={"k": k}),
-        chain_type_kwargs={'prompt': prompt_temp}
-    )
-        """
-        question_answer_chain = create_stuff_documents_chain(self.llm, prompt_temp)
-        self.qa_chain = create_retrieval_chain(self.chroma_db.as_retriever(search_kwargs={"k": k}),
-                                               question_answer_chain)
+    def evaluate_retrieval(self, queries, top_k=5):
+        total_queries = len(queries)
+        score = 0.0
+        id_match_num = 0
+        page_match_num = 0
+        for query in queries:
+            question = query["question"]
+            expected_page_num = query["page_num"]
+            expected_id = query["id"]
 
-    def invoke(self, query):
-        return self.qa_chain.invoke({"input": query})
+            results = self.retrieve_top_k(question, k=top_k)
+            id_found = False
+            page_num_found = False
+            for result, _ in results:
+                if str(result.metadata['id']) == str(expected_id):
+                    id_found = True
+                    score += 1
+                    id_match_num += 1
+                    page_match_num += 1
+                    break
+                elif str(result.metadata['page_number']) == str(expected_page_num):
+                    page_num_found = True
+
+            if not id_found and page_num_found:
+                score += 1
+                page_match_num += 1
+
+        accuracy = score / total_queries
+
+        logging.info(
+            f"Total Query: {total_queries}, "
+            f"Top {top_k} Accuracy: {accuracy * 100:.2f}%, "
+            f"id Match Num: {id_match_num}, "
+            f"Page Match Num: {page_match_num}"
+        )
+
+        return accuracy
 
 
 def main():
@@ -129,29 +131,20 @@ def main():
     config = load_config(config_path)
 
     manager = ChromaManager(config, 'lotus')
-    manager.load_model("llama3:8b")
+    manager.load_model()
     # manager.load_and_store_data()
-    manager.check_db()
-    # print(manager.llm)
-    test_prompt = "What is Mark II"
-    prompt_template = """
-    ### Instruction:
-    You're question answering AI assistant, who answers questions based upon provided information in a distinct and clear way.
-    Answers must be based only on the information from I provided and nothing else. Don't use any other answer source except what is in the information.
+    # manager.check_db()
 
-    ## Information:
-    {context}
-
-    ## Question:
-    {input}
-    """
-    PROMPT = PromptTemplate(
-        template=prompt_template, input_variables=["context", "question"]
-    )
-    manager.build_chain(3, PROMPT)
-    manager.invoke(test_prompt)
+    # test_prompt = "What is Mark"
     # result = manager.retrieve_top_k(test_prompt)
     # print(result)
+
+    test_file_path = '../Data/test_data/rag_test_part1.json'
+    with open(test_file_path, 'r') as file:
+        test_queries = json.load(file)
+
+    accuracy = manager.evaluate_retrieval(test_queries, 10)
+    print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
 if __name__ == "__main__":
