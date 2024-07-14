@@ -7,8 +7,8 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 
 class OllamaManager:
-    def __init__(self, model="llama3:8b"):
-        self.llm = ChatOllama(model=model, callbacks=[StreamingStdOutCallbackHandler()])
+    def __init__(self, config):
+        self.llm = ChatOllama(model=config['llm'], callbacks=[StreamingStdOutCallbackHandler()])
         # self.llm = Ollama(model=model, callbacks=[StreamingStdOutCallbackHandler()])
         self.template = self._set_template()
 
@@ -39,7 +39,8 @@ class OllamaManager:
 
 
 if __name__ == "__main__":
-    manager = OllamaManager(model="llama3:8b")
+    config = {'llm': "llama3:8b"}
+    manager = OllamaManager(config)
     context = ""
     while True:
         question = input("Please enter your question: ")

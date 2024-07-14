@@ -17,8 +17,8 @@ from langchain.chains import LLMChain
 from langchain_core.output_parsers import StrOutputParser
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
-from db.chromaManager import ChromaManager
-from src.ollamaManager import OllamaManager
+from utils.chromaManager import ChromaManager
+from utils.ollamaManager import OllamaManager
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
@@ -37,7 +37,7 @@ def load_config(config_path):
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
-    question = data.get('question', 'What is Mark')
+    question = data.get('question')
 
     if not question:
         return jsonify({"error": "Question not provided"}), 400
@@ -49,7 +49,7 @@ def chat():
         for partial_response in ollama_manager.chat(context, question):
             json_data = json.dumps({'response': partial_response})
             yield f"data: {json_data}\n\n"
-            time.sleep(0.01)
+            # time.sleep(0.01)
 
     return Response(stream_with_context(generate_response()), content_type='text/event-stream')
 
@@ -60,10 +60,11 @@ if __name__ == "__main__":
     config = load_config(config_path)
 
     model_name = config['llm']
+    print(model_name)
 
     chroma_manager = ChromaManager(config, 'lotus')
     chroma_manager.load_model()
 
-    ollama_manager = OllamaManager(model=model_name)
+    ollama_manager = OllamaManager(config)
 
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001)
