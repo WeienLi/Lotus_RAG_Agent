@@ -199,17 +199,21 @@ def main():
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
     # manager.load_and_store_data()
-    # manager.check_db()
+    manager.check_db()
 
-    # test_prompt = "What is Mark"
-    # result = manager.retrieve_top_k(test_prompt)
-    # print(result)
+    # test_file_path = '../Data/test_data/rag_test_part1.json'
+    # with open(test_file_path, 'r') as file:
+    #     test_queries = json.load(file)
 
-    test_file_path = '../Data/test_data/rag_test_part1.json'
-    with open(test_file_path, 'r') as file:
-        test_queries = json.load(file)
+    test_directory = '../Data/test_data'
+    test_queries = []
+    for filename in os.listdir(test_directory):
+        if filename.endswith('.json'):
+            file_path = os.path.join(test_directory, filename)
+            with open(file_path, 'r') as file:
+                test_queries.extend(json.load(file))
 
-    accuracy = manager.evaluate_retrieval(test_queries, 10, True)
+    accuracy = manager.evaluate_retrieval(test_queries, 20, True)
     print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
