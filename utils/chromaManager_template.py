@@ -37,7 +37,7 @@ class ChromaManager:
         available_memory_gb = mem.available / (1024 ** 3)
         logging.info(f"Initializing ChromaManager - Available memory: {available_memory_gb:.2f} GB")
 
-    def load_model(self, model_name="gemma2:9b"):
+    def load_model(self, model_name="llama3:8b"):
         try:
             logging.info("Loading embedding model...")
 
