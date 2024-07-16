@@ -153,6 +153,7 @@ class ChromaManager:
             for result, _ in results:
                 if str(result.metadata['id']) == str(expected_id):
                     id_found = True
+                    page_num_found = True
                     score += 1
                     id_match_num += 1
                     page_match_num += 1
