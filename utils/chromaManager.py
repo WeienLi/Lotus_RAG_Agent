@@ -134,11 +134,13 @@ class ChromaManager:
         results.sort(key=lambda x: x[1])
         return results
 
-    def evaluate_retrieval(self, queries, top_k=5):
+    def evaluate_retrieval(self, queries, top_k=5, save=False):
         total_queries = len(queries)
         score = 0.0
         id_match_num = 0
         page_match_num = 0
+        results_list = []
+
         for query in tqdm(queries):
             question = query["question"]
             expected_page_num = query["page_num"]
@@ -162,6 +164,17 @@ class ChromaManager:
                 score += 1
                 page_match_num += 1
 
+            if save:
+                result_entry = {
+                    'id_found': id_found,
+                    'expected_id': expected_id,
+                    'page_num_found': page_num_found,
+                    'expected_page_num': expected_page_num,
+                    'results': [{'metadata': result.metadata, 'content': result.page_content, 'distance': score} for
+                                result, score in results]
+                }
+                results_list.append(result_entry)
+
         accuracy = score / total_queries
 
         logging.info(
@@ -170,6 +183,10 @@ class ChromaManager:
             f"id Match Num: {id_match_num}, "
             f"Page Match Num: {page_match_num}"
         )
+
+        if save:
+            with open('result.json', 'w') as f:
+                json.dump(results_list, f, indent=4)
 
         return accuracy
 
@@ -191,7 +208,7 @@ def main():
     with open(test_file_path, 'r') as file:
         test_queries = json.load(file)
 
-    accuracy = manager.evaluate_retrieval(test_queries, 10)
+    accuracy = manager.evaluate_retrieval(test_queries, 10, True)
     print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
