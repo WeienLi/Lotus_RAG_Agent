@@ -13,7 +13,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from langchain_core.output_parsers import BaseOutputParser
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
@@ -38,7 +38,7 @@ class ChromaManager:
         self.file_path = config['file_path']
         self.persist_directory = config['persist_directory']
         self.embeddings_model_name = config['embeddings_model_name']
-        self.llm = ChatOllama(model=config['llm'])
+        self.llm = ChatOllama(model=config['llm_s'])
         self.collection_name = collection_name
         self.batch_size = batch_size
 
@@ -134,7 +134,7 @@ class ChromaManager:
 
         results.sort(key=lambda x: x[1])
         return results
-
+    
     def evaluate_retrieval(self, queries, top_k=5):
         total_queries = len(queries)
         score = 0.0
