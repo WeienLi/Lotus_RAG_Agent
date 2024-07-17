@@ -276,6 +276,8 @@ def test_if_query_rag(config, test_directory):
         test_label = manager.if_query_rag(question)
         if true_label == test_label:
             num += 1
+        else:
+            print(f"Question: {question}\ntrue_label: {true_label}, test_label: {test_label}")
 
     print(f"Total test query: {len(test_queries)}, "
           f"Correct Number: {num}, "
