@@ -39,7 +39,7 @@ class OllamaManager:
 
 
 if __name__ == "__main__":
-    config = {'llm': "llama3:8b"}
+    config = {'llm': "llama3"}
     manager = OllamaManager(config)
     context = ""
     while True:

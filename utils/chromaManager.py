@@ -11,7 +11,6 @@ from langchain_community.chat_models import ChatOllama
 from langchain_community.document_loaders import JSONLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_openai import ChatOpenAI
 from langchain.retrievers.multi_query import MultiQueryRetriever
 
 from langchain_core.output_parsers import BaseOutputParser

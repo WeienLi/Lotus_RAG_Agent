@@ -1,0 +1,25 @@
+{'input': "How about Mark II's engine", 'chat_history': [HumanMessage(content='What is Mark II?'), 
+AIMessage(content='The Mark II is a state-of-the-art trials car that was also usable on the road.  
+It was built by Colin Chapman using parts from both Austin Seven and Ford vehicles. 
+The Mark II was later sold to different owners and even appeared in a film called "Brothers in Law". \n\n\n')], 
+'context': [Document(metadata={'car_stats': '["MODEL\\nMark II\\nNAME/FORMULA\\nTrials Car\\nYEARS OF PRODUCTION\\n194\\n
+EXAMPLES BUILT\\n1\\nENGINE TYPE\\nFord 8 side-valve, later Ford 10\\nENGINE SIZE/POWER\\n1172cc/25-30bhp\\nLENGTH/WIDTH/HEIGHT\\
+n108in/55in/55in\\nWHEELBASE\\n79.5in\\nWEIGHT\\n980lb/445kg"]', 'id': '5', 'page_number': 9}, page_content='Unlike the Mark I, 
+the Mark II was conceived as\na state-of-the-art trials car, which at the same time\nwould be usable on the road. As on the Mark I, 
+the\nmain Austin Seven chassis members were boxed-in,\nbut the cross-members were removed and replaced\nwith tubes welded in position. 
+This provided a\nlightweight but stiff frame.\nColin used the Ford split front axle, fitted with\nbushes and suspended from the front of 
+the Austin\nSeven A-frame. However, he did not want to use the\nheavy Ford rear axle, preferring the lighter Austin\nSeven unit which was 
+easier to connect to the four-\nspeed Austin Seven gearbox that he used in place\nof the three-speed Ford unit. Not satisfied that the
+\nstandard axle ratios were high enough for his use, he\nfamously devised a way to increase the ratio. He used\nthe 42-tooth crown wheel 
+from one axle type, mated\nto the 9-tooth pinion of the other type, then filled the\ndifferential not with oil but with Bluebell metal polish.
+\nIt was run for 50 miles in this fashion, and then pulled\napart. The bearings had been destroyed but crown\nwheel and pinion now meshed perfectly. 
+Now, instead\nof a'), Document(metadata={'car_stats': '["MODEL\\nType 111\\nNAME/FORMULA\\nExige Cup 240\\nYEARS OF PRODUCTION\\n2006-07\\n
+EXAMPLES BUILT\\nnot available\\nENGINE TYPE\\nSupercharged Toyota VVTL-i 16v\\nENGINE SIZE/POWER\\n1796cc/243bhp\\nLENGTH/WIDTH/HEIGHT\\n
+149in/73in/44in\\nWHEELBASE\\n90.5in\\nWEIGHT\\n2050lb/930kg"]', 'id': '874', 'page_number': 217}, page_content='two Exige Cup cars.'), 
+Document(metadata={'car_stats': '["MODEL\\nMark II\\nNAME/FORMULA\\nTrials Car\\nYEARS OF PRODUCTION\\n194\\nEXAMPLES BUILT\\n1\\nENGINE 
+TYPE\\nFord 8 side-valve, later Ford 10\\nENGINE SIZE/POWER\\n1172cc/25-30bhp\\nLENGTH/WIDTH/HEIGHT\\n108in/55in/55in\\nWHEELBASE\\n79.5in
+\\nWEIGHT\\n980lb/445kg"]', 'id': '9', 'page_number': 9}, page_content='to a\ncommission, but other matters\nwould intervene. It was only 
+just\nbefore this time that the Mark II\nwas conceived and began to be\nbuilt. During this time Colin had\nto devote all his 48-hour passes
+\nand leave periods from the RAF\n,\nto work on the car.')], 'answer': "The text doesn't specify details about the Mark II's engine.  
+It focuses more on the car's chassis, suspension, and axle modifications made by Colin Chapman.  
+I cannot provide information about the engine without additional context. \n\n\n"}
