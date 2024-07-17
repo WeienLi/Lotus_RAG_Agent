@@ -6,7 +6,7 @@ import json
 import logging
 import yaml
 import requests
-from flask import Flask, request, Response, stream_with_context
+from flask import Flask, request, Response, stream_with_context, jsonify
 from flask_cors import CORS
 from langchain_community.document_loaders import JSONLoader
 from langchain_community.vectorstores import Chroma
@@ -17,8 +17,8 @@ from langchain.chains import LLMChain
 from langchain_core.output_parsers import StrOutputParser
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
-from utils.chromaManager import ChromaManager
-from utils.ollamaManager import OllamaManager
+from new_utils.chromaManager import ChromaManager
+from new_utils.ollamaManager import OllamaManager
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
@@ -26,7 +26,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'u
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
-CORS(app)
+#CORS(app)
 
 
 def load_config(config_path):
@@ -42,11 +42,11 @@ def chat():
     if not question:
         return jsonify({"error": "Question not provided"}), 400
 
-    results = chroma_manager.retrieve_top_k(question)
-    context = "\n\n".join([result[0].page_content for result in results])
+    # results = chroma_manager.retrieve_top_k(question)
+    # context = "\n\n".join([result[0].page_content for result in results])
 
     def generate_response():
-        for partial_response in ollama_manager.chat(context, question):
+        for partial_response in ollama_manager.chat(question,'ab123'):
             json_data = json.dumps({'response': partial_response})
             yield f"data: {json_data}\n\n"
             # time.sleep(0.01)
@@ -64,7 +64,10 @@ if __name__ == "__main__":
 
     chroma_manager = ChromaManager(config, 'lotus')
     chroma_manager.load_model()
+    chroma_manager.check_db()
+    db_ret = chroma_manager.get_db_as_ret(search_kwargs={"k" : 10})
+    print(db_ret)
+    ollama_manager = OllamaManager(config,db_ret)
 
-    ollama_manager = OllamaManager(config)
-
-    app.run(host='0.0.0.0', port=5001)
+    #app.run(host='0.0.0.0', port=5001)
+    app.run(host='127.0.0.1', port=5001)
