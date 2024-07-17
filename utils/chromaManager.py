@@ -178,6 +178,40 @@ class ChromaManager:
         results.sort(key=lambda x: x[1])
         return results
 
+    def self_rag(self, question, k=10, max_retry=3):
+        prompt_template = """Given Information:
+        {context}
+
+        Based on the given information, can you answer the Question: {question}?
+        Please answer only "yes" or "no".
+        """
+        tpl = ChatPromptTemplate.from_template(prompt_template)
+        chain = tpl | self.llm
+
+        first_search_results = None
+
+        for attempt in range(max_retry):
+            search_results = self.chroma_db.similarity_search_with_score(question, k=k * (attempt + 1))
+            search_results = search_results[k * attempt:]
+            logging.info(f"search_results: {len(search_results)}, k: {k * (attempt + 1)}")
+            context = "\n".join([doc.page_content.replace('\n', '') for doc, _ in search_results])
+            response = chain.invoke({"question": question, "context": context})
+
+            if attempt == 0:
+                first_search_results = search_results
+
+            if "yes" in response.content.lower().strip():
+                logging.info(f"Relevant information found in {attempt + 1} attempts.")
+                return search_results
+
+        logging.info(f"No sufficient relevant information found after {max_retry} attempts.")
+        return first_search_results
+
+    def get_db_as_ret(self, search_type="similarity", search_kwargs=None):
+        if search_kwargs is None:
+            search_kwargs = {"k": 5}
+        return self.chroma_db.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+
     def evaluate_retrieval(self, queries, top_k=5, save=False):
         total_queries = len(queries)
         score = 0.0
@@ -192,6 +226,7 @@ class ChromaManager:
 
             results = self.retrieve_top_k(question, k=top_k)
             # results = self.multi_query_retrieve_top_k(question, k=top_k)
+            # results = self.self_rag(question, k=top_k)
             id_found = False
             page_num_found = False
             for result, _ in results:
@@ -242,7 +277,7 @@ def load_db(config):
     manager.load_and_store_data()
 
 
-def test_retrieval_acc(config, test_directory='../Data/test_data'):
+def test_retrieval_acc(config, test_directory='../Data/test_data', k=10):
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
 
@@ -253,7 +288,7 @@ def test_retrieval_acc(config, test_directory='../Data/test_data'):
             with open(file_path, 'r') as file:
                 test_queries.extend(json.load(file))
 
-    accuracy = manager.evaluate_retrieval(test_queries, 10, False)
+    accuracy = manager.evaluate_retrieval(test_queries, k, False)
     print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
@@ -286,4 +321,5 @@ def test_if_query_rag(config, test_directory):
 if __name__ == "__main__":
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
+    # test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
+    test_retrieval_acc(config, '/root/autodl-tmp/RAG_Agent/Data/test_data', k=20)
