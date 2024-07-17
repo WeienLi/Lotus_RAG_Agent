@@ -16,6 +16,7 @@ from langchain.retrievers.multi_query import MultiQueryRetriever
 
 from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
@@ -101,6 +102,50 @@ class ChromaManager:
 
     def check_db(self):
         logging.info(f"There are {self.chroma_db._collection.count()} in the collection")
+
+    def if_query_rag(self, question, max_retry=3):
+        prompt_template = """
+        You are a smart assistant designed to categorize questions. You need to determine whether the user's question is a general daily question or a specific question that requires information from a specific dataset about car statistics. 
+
+        The dataset includes detailed historical and technical data about various car models such as:
+        - Model names and formulas (e.g., Mark I, Trials Car, Mark II, etc.)
+        - Years of production
+        - Number of examples built
+        - Engine types and specifications (e.g., Austin Seven two-bearing side-valve, Ford 10 side-valve, etc.)
+        - Dimensions (length, width, height)
+        - Wheelbase
+        - Weight
+
+        Here are some example questions related to the dataset:
+        - "What engine was used in the Mark I car?"
+        - "How many Mark II cars were built?"
+        - "Can you provide the specifications for the Mark VI?"
+        - "What were the production years for the Mark VIII?"
+
+        Any question that involves details about car models, their specifications, history, or technical data should be categorized as requiring the specific dataset (Answer: YES).
+
+        General daily questions might include:
+        - "What's the weather like today?"
+        - "How do I make a cup of coffee?"
+        - "What's the capital of France?"
+        - "What time is it?"
+
+        For such questions, the answer should be categorized as not requiring the specific dataset (Answer: NO).
+
+        Please analyze the following question and determine if it is a general question or one that requires information from the specific dataset. 
+        Reply with "YES" if it requires the dataset, or "NO" if it does not. Remember your only can reply "YES" or "NO" without reasoning or any other word.
+
+        Question: {question}
+        """
+        tpl = ChatPromptTemplate.from_template(prompt_template)
+        chain = tpl | self.llm
+        for i in range(max_retry):
+            response = chain.invoke({"question": question})
+            if "yes" in response.content.lower():
+                return "need rag"
+            elif "no" in response.content.lower():
+                return "no rag"
+        return "need rag"
 
     def retrieve_top_k(self, prompt, k=5):
         return self.chroma_db.similarity_search_with_score(prompt, k=k)
@@ -192,20 +237,16 @@ class ChromaManager:
         return accuracy
 
 
-def main():
-    config_path = "../config/config.yaml"
-    config = load_config(config_path)
-
+def load_db(config):
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
-    # manager.load_and_store_data()
-    manager.check_db()
+    manager.load_and_store_data()
 
-    # test_file_path = '../Data/test_data/rag_test_part1.json'
-    # with open(test_file_path, 'r') as file:
-    #     test_queries = json.load(file)
 
-    test_directory = '../Data/test_data'
+def test_retrieval_acc(config, test_directory='../Data/test_data'):
+    manager = ChromaManager(config, 'lotus')
+    manager.load_model()
+
     test_queries = []
     for filename in os.listdir(test_directory):
         if filename.endswith('.json'):
@@ -213,9 +254,35 @@ def main():
             with open(file_path, 'r') as file:
                 test_queries.extend(json.load(file))
 
-    accuracy = manager.evaluate_retrieval(test_queries, 20, True)
+    accuracy = manager.evaluate_retrieval(test_queries, 10, False)
     print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
+def test_if_query_rag(config, test_directory):
+    manager = ChromaManager(config, 'lotus')
+    manager.load_model()
+
+    test_queries = []
+    for filename in os.listdir(test_directory):
+        if filename.endswith('.json'):
+            file_path = os.path.join(test_directory, filename)
+            with open(file_path, 'r') as file:
+                test_queries.extend(json.load(file))
+
+    num = 0
+    for test_query in tqdm(test_queries):
+        question = test_query['question']
+        true_label = test_query['label']
+        test_label = manager.if_query_rag(question)
+        if true_label == test_label:
+            num += 1
+
+    print(f"Total test query: {len(test_queries)}, "
+          f"Correct Number: {num}, "
+          f"Accuracy: {num / len(test_queries) * 100:.2f}%")
+
+
 if __name__ == "__main__":
-    main()
+    config_path = "../config/config.yaml"
+    config = load_config(config_path)
+    test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
