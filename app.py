@@ -46,8 +46,10 @@ def chat():
     # context = "\n\n".join([result[0].page_content for result in results])
 
     def generate_response():
-        for partial_response in ollama_manager.chat(question, 'ab123'):
-            json_data = json.dumps({'response': partial_response})
+        pr, flag = ollama_manager.chat(question, 'ab123')
+        for partial_response in pr:
+            json_data = json.dumps({'response': partial_response, 'general_or_rag': flag})
+            # print(flag)
             yield f"data: {json_data}\n\n"
             # time.sleep(0.01)
 
