@@ -2,7 +2,6 @@ import sys
 import os
 import json
 import logging
-import yaml
 import re
 from typing import List
 from tqdm import tqdm
@@ -11,21 +10,17 @@ from langchain_community.chat_models import ChatOllama
 from langchain_community.document_loaders import JSONLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.retrievers import EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores import FAISS
+from langchain.schema import Document
 
 from langchain_core.output_parsers import BaseOutputParser
-from langchain_core.prompts import PromptTemplate
-from langchain_core.prompts import ChatPromptTemplate
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-
-def load_config(config_path):
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
 
 
 class LineListOutputParser(BaseOutputParser[List[str]]):
@@ -61,7 +56,6 @@ class ChromaManager:
             logging.info("Model loaded successfully.")
         except Exception as e:
             logging.error(f"Failed to load model: {e}")
-            raise
 
     def load_and_store_data(self):
         loader = JSONLoader(file_path=self.file_path, jq_schema=".[]", text_content=False)
@@ -102,134 +96,55 @@ class ChromaManager:
     def check_db(self):
         logging.info(f"There are {self.chroma_db._collection.count()} in the collection")
 
-    def if_query_rag(self, question, max_retry=3):
-        prompt_template = """
-        You are a smart assistant designed to categorize questions. You need to determine whether the user's question is a general daily question or a specific question that requires information from a specific dataset about car statistics. 
+    def get_retriever(self, k=5, retriever_type="chroma"):
+        chroma_docs = self.chroma_db.get()
+        documents = [Document(page_content=doc, metadata=metadata)
+                     for doc, metadata in zip(chroma_docs['documents'], chroma_docs['metadatas'])]
+        if retriever_type == "ensemble":
+            bm25_retriever = BM25Retriever.from_documents(documents)
+            bm25_retriever.k = k
 
-        The dataset includes detailed historical and technical data about various car models such as:
-        - Model names and formulas (e.g., Mark I, Trials Car, Mark II, etc.)
-        - Years of production
-        - Number of examples built
-        - Engine types and specifications (e.g., Austin Seven two-bearing side-valve, Ford 10 side-valve, etc.)
-        - Dimensions (length, width, height)
-        - Wheelbase
-        - Weight
+            faiss_vectorstore = FAISS.from_documents(documents, self.embeddings)
+            faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": k})
 
-        Here are some example questions related to the dataset:
-        - "What engine was used in the Mark I car?"
-        - "How many Mark II cars were built?"
-        - "Can you provide the specifications for the Mark VI?"
-        - "What were the production years for the Mark VIII?"
+            chroma_retriever = self.chroma_db.as_retriever(search_kwargs={"k": k})
 
-        Any question that involves details about car models, their specifications, history, or technical data should be categorized as requiring the specific dataset (Answer: YES).
+            retrievers = [bm25_retriever, faiss_retriever, chroma_retriever]
 
-        General daily questions might include:
-        - "What's the weather like today?"
-        - "How do I make a cup of coffee?"
-        - "What's the capital of France?"
-        - "What time is it?"
+            ensemble_retriever = EnsembleRetriever(
+                retrievers=retrievers,
+                weights=[1 / len(retrievers) for i in range(len(retrievers))]
+            )
+            return ensemble_retriever
 
-        For such questions, the answer should be categorized as not requiring the specific dataset (Answer: NO).
+        if retriever_type == "faiss":
+            faiss_vectorstore = FAISS.from_documents(documents, self.embeddings)
+            faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": k})
+            return faiss_retriever
 
-        Please analyze the following question and determine if it is a general question or one that requires information from the specific dataset. 
-        Reply with "YES" if it requires the dataset, or "NO" if it does not. Remember your only can reply "YES" or "NO" without reasoning or any other word.
+        else:
+            retriever = self.chroma_db.as_retriever(search_kwargs={"k": k})
+            return retriever
 
-        Question: {question}
-        """
-        tpl = ChatPromptTemplate.from_template(prompt_template)
-        chain = tpl | self.llm
-        for i in range(max_retry):
-            response = chain.invoke({"question": question})
-            if "yes" in response.content.lower():
-                return "need rag"
-            elif "no" in response.content.lower():
-                return "no rag"
-        return "need rag"
-
-    def retrieve_top_k(self, prompt, k=5):
-        return self.chroma_db.similarity_search_with_score(prompt, k=k)
-
-    def multi_query_retrieve_top_k(self, prompt, k=5):
-        output_parser = LineListOutputParser()
-
-        QUERY_PROMPT = PromptTemplate(
-            input_variables=["question"],
-            template="""You are an AI language model assistant. Your task is to generate five 
-                        different versions of the given user question to retrieve relevant documents from a vector 
-                        database. By generating multiple perspectives on the user question, your goal is to help
-                        the user overcome some of the limitations of the distance-based similarity search. 
-                        Provide these alternative questions separated by newlines.
-                        Original question: {question}""",
-        )
-
-        llm_chain = QUERY_PROMPT | self.llm | output_parser
-        queries = llm_chain.invoke(prompt)
-
-        results = []
-        unique_ids = []
-        for query in queries:
-            if len(query) < 1:
-                continue
-            for result, score in self.chroma_db.similarity_search_with_score(query, k=k):
-                if result.metadata['id'] not in unique_ids:
-                    unique_ids.append(result.metadata['id'])
-                    results.append((result, score))
-
-        results.sort(key=lambda x: x[1])
-        return results
-
-    def self_rag(self, question, k=10, max_retry=3):
-        prompt_template = """Given Information:
-        {context}
-
-        Based on the given information, can you answer the Question: {question}?
-        Please answer only "yes" or "no".
-        """
-        tpl = ChatPromptTemplate.from_template(prompt_template)
-        chain = tpl | self.llm
-
-        first_search_results = None
-
-        for attempt in range(max_retry):
-            search_results = self.chroma_db.similarity_search_with_score(question, k=k * (attempt + 1))
-            search_results = search_results[k * attempt:]
-            logging.info(f"search_results: {len(search_results)}, k: {k * (attempt + 1)}")
-            context = "\n".join([doc.page_content.replace('\n', '') for doc, _ in search_results])
-            response = chain.invoke({"question": question, "context": context})
-
-            if attempt == 0:
-                first_search_results = search_results
-
-            if "yes" in response.content.lower().strip():
-                logging.info(f"Relevant information found in {attempt + 1} attempts.")
-                return search_results
-
-        logging.info(f"No sufficient relevant information found after {max_retry} attempts.")
-        return first_search_results
-
-    def get_db_as_ret(self, search_type="similarity", search_kwargs=None):
-        if search_kwargs is None:
-            search_kwargs = {"k": 5}
-        return self.chroma_db.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
-
-    def evaluate_retrieval(self, queries, top_k=5, save=False):
+    def evaluate_retrieval(self, queries, top_k=5, retriever_type="chroma", save=False):
         total_queries = len(queries)
         score = 0.0
         id_match_num = 0
         page_match_num = 0
         results_list = []
+        retriever = self.get_retriever(top_k, retriever_type)
 
         for query in tqdm(queries):
             question = query["question"]
             expected_page_num = query["page_num"]
             expected_id = query["id"]
 
-            results = self.retrieve_top_k(question, k=top_k)
-            # results = self.multi_query_retrieve_top_k(question, k=top_k)
-            # results = self.self_rag(question, k=top_k)
+            results = retriever.invoke(question)
             id_found = False
             page_num_found = False
-            for result, _ in results:
+            for result in results:
+                if isinstance(result, tuple):
+                    result = result[0]
                 if str(result.metadata['id']) == str(expected_id):
                     id_found = True
                     page_num_found = True
@@ -241,7 +156,7 @@ class ChromaManager:
                     page_num_found = True
 
             if not id_found and page_num_found:
-                score += 1
+                # score += 1
                 page_match_num += 1
 
             if save:
@@ -258,6 +173,7 @@ class ChromaManager:
         accuracy = score / total_queries
 
         logging.info(
+            f"Retriever: {retriever_type}, "
             f"Total Query: {total_queries}, "
             f"Top {top_k} Accuracy: {accuracy * 100:.2f}%, "
             f"id Match Num: {id_match_num}, "
@@ -269,57 +185,3 @@ class ChromaManager:
                 json.dump(results_list, f, indent=4)
 
         return accuracy
-
-
-def load_db(config):
-    manager = ChromaManager(config, 'lotus')
-    manager.load_model()
-    manager.load_and_store_data()
-
-
-def test_retrieval_acc(config, test_directory='../Data/test_data', k=10):
-    manager = ChromaManager(config, 'lotus')
-    manager.load_model()
-
-    test_queries = []
-    for filename in os.listdir(test_directory):
-        if filename.endswith('.json'):
-            file_path = os.path.join(test_directory, filename)
-            with open(file_path, 'r') as file:
-                test_queries.extend(json.load(file))
-
-    accuracy = manager.evaluate_retrieval(test_queries, k, False)
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-
-
-def test_if_query_rag(config, test_directory):
-    manager = ChromaManager(config, 'lotus')
-    manager.load_model()
-
-    test_queries = []
-    for filename in os.listdir(test_directory):
-        if filename.endswith('.json'):
-            file_path = os.path.join(test_directory, filename)
-            with open(file_path, 'r') as file:
-                test_queries.extend(json.load(file))
-
-    num = 0
-    for test_query in tqdm(test_queries):
-        question = test_query['question']
-        true_label = test_query['label']
-        test_label = manager.if_query_rag(question)
-        if true_label == test_label:
-            num += 1
-        else:
-            print(f"Question: {question}\ntrue_label: {true_label}, test_label: {test_label}")
-
-    print(f"Total test query: {len(test_queries)}, "
-          f"Correct Number: {num}, "
-          f"Accuracy: {num / len(test_queries) * 100:.2f}%")
-
-
-if __name__ == "__main__":
-    config_path = "../config/config.yaml"
-    config = load_config(config_path)
-    # test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
-    test_retrieval_acc(config, '/root/autodl-tmp/RAG_Agent/Data/test_data', k=20)

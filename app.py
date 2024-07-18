@@ -46,8 +46,10 @@ def chat():
     # context = "\n\n".join([result[0].page_content for result in results])
 
     def generate_response():
-        for partial_response in ollama_manager.chat(question, 'ab123'):
-            json_data = json.dumps({'response': partial_response})
+        pr, flag = ollama_manager.chat(question, 'ab123')
+        for partial_response in pr:
+            json_data = json.dumps({'response': partial_response, 'general_or_rag': flag})
+            # print(flag)
             yield f"data: {json_data}\n\n"
             # time.sleep(0.01)
 
@@ -65,7 +67,7 @@ if __name__ == "__main__":
     chroma_manager = ChromaManager(config, 'lotus')
     chroma_manager.load_model()
     chroma_manager.check_db()
-    db_ret = chroma_manager.get_db_as_ret(search_kwargs={"k": 10})
+    db_ret = chroma_manager.get_retriever(k=10, retriever_type="ensemble")
     print(db_ret)
     ollama_manager = OllamaManager(config, db_ret)
 

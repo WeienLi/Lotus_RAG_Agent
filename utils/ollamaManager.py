@@ -1,3 +1,4 @@
+import yaml
 from functools import lru_cache
 from abc import ABC, abstractmethod
 from langchain_community.chat_models import ChatOllama
@@ -47,10 +48,10 @@ class OllamaManager:
 
     @staticmethod
     def _qa_template():
+        # If you don't know the answer, just say that you don't know. \
+        #                 Use Seven sentences maximum and keep the answer concise.\
         return """You are an assistant for question-answering tasks. \
                 Use the following pieces of retrieved context to answer the question. \
-                If you don't know the answer, just say that you don't know. \
-                Use three sentences maximum and keep the answer concise.\
                 {context}"""
 
     @staticmethod
@@ -92,12 +93,12 @@ class OllamaManager:
         )
 
         return (
-            RunnablePassthrough.assign(
-                context=lambda x: format_docs(x)
-            ).with_config(run_name="format_inputs")
-            | qa_prompt
-            | llm
-            | StrOutputParser()
+                RunnablePassthrough.assign(
+                    context=lambda x: format_docs(x)
+                ).with_config(run_name="format_inputs")
+                | qa_prompt
+                | llm
+                | StrOutputParser()
         ).with_config(run_name="custom_stuff_documents_chain")
 
     def if_query_rag(self, question, max_retry=3):
@@ -118,8 +119,9 @@ class OllamaManager:
         - "How many Mark II cars were built?"
         - "Can you provide the specifications for the Mark VI?"
         - "What were the production years for the Mark VIII?"
+        - "Please tell me something about lotus?"
 
-        Any question that involves details about car models, their specifications, history, or technical data should be categorized as requiring the specific dataset (Answer: YES).
+        Any question that involves details about car models or mention about the keywords such as lotus, their specifications, history, or technical data should be categorized as requiring the specific dataset (Answer: YES).
 
         General daily questions might include:
         - "What's the weather like today?"
@@ -148,7 +150,8 @@ class OllamaManager:
 
     @lru_cache(maxsize=None)
     def decide_rag_or_general(self, question):
-        return self.if_query_rag(question)
+        # return self.if_query_rag(question)
+        return "need rag"
 
     def build_chain(self):
         history_aware_retriever = create_history_aware_retriever(
@@ -166,9 +169,9 @@ class OllamaManager:
             ]
         )
         general_qa_chain = (
-            RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
-            | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
-                          "rag_or_general": "general"})
+                RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
+                | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
+                              "rag_or_general": "general"})
         )
 
         def decide_and_cache(inputs):
@@ -176,15 +179,15 @@ class OllamaManager:
             return self.decide_rag_or_general(question)
 
         branched_chain = RunnableBranch(
-            (lambda x: decide_and_cache(x) == "rag", qa_chain),
-            (lambda x: decide_and_cache(x) == "general", general_qa_chain),
+            (lambda x: decide_and_cache(x) == "need rag", qa_chain),
+            (lambda x: decide_and_cache(x) == "no rag", general_qa_chain),
             general_qa_chain
         )
         final_chain = (
-            RunnablePassthrough().assign(
-                rag_or_general=decide_and_cache
-            )
-            | branched_chain
+                RunnablePassthrough().assign(
+                    rag_or_general=decide_and_cache
+                )
+                | branched_chain
         )
 
         def get_session_history(session_id: str) -> BaseChatMessageHistory:
@@ -205,4 +208,4 @@ class OllamaManager:
             {"input": query},
             config={"configurable": {"session_id": session_id}},
         )
-        return res["answer"]
+        return res["answer"], res["rag_or_general"]
