@@ -48,10 +48,10 @@ class OllamaManager:
 
     @staticmethod
     def _qa_template():
+        # If you don't know the answer, just say that you don't know. \
+        #                 Use Seven sentences maximum and keep the answer concise.\
         return """You are an assistant for question-answering tasks. \
                 Use the following pieces of retrieved context to answer the question. \
-                If you don't know the answer, just say that you don't know. \
-                Use Seven sentences maximum and keep the answer concise.\
                 {context}"""
 
     @staticmethod

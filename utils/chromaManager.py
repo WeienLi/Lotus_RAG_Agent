@@ -185,8 +185,3 @@ class ChromaManager:
                 json.dump(results_list, f, indent=4)
 
         return accuracy
-
-    def get_db_as_ret(self, search_type="similarity", search_kwargs=None):
-        if search_kwargs is None:
-            search_kwargs = {"k": 5}
-        return self.chroma_db.as_retriever(search_type=search_type, search_kwargs=search_kwargs)

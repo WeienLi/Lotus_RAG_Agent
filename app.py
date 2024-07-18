@@ -67,7 +67,7 @@ if __name__ == "__main__":
     chroma_manager = ChromaManager(config, 'lotus')
     chroma_manager.load_model()
     chroma_manager.check_db()
-    db_ret = chroma_manager.get_db_as_ret(search_kwargs={"k": 10})
+    db_ret = chroma_manager.get_retriever(k=10, retriever_type="ensemble")
     print(db_ret)
     ollama_manager = OllamaManager(config, db_ret)
 
