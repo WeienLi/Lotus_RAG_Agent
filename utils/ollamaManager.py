@@ -1,11 +1,8 @@
-import yaml
 from functools import lru_cache
-from abc import ABC, abstractmethod
 from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import StrOutputParser
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chains import create_retrieval_chain, create_history_aware_retriever
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -48,16 +45,25 @@ class OllamaManager:
 
     @staticmethod
     def _qa_template():
-        # If you don't know the answer, just say that you don't know. \
-        #                 Use Seven sentences maximum and keep the answer concise.\
-        return """You are an assistant for question-answering tasks. \
-                Use the following pieces of retrieved context to answer the question. \
-                {context}"""
+        return """You are Colin, an LLM-driven guide for Lotus Starlight Avenue. \
+        Your role is to assist users by answering questions and providing detailed information about Lotus's \
+        brand promotion and its famous historical models. Use the following pieces of retrieved context to \
+        answer the question.
+        Retrieved Context: \n{context} 
+
+        If the user's question is a common, everyday query, such as:
+        - "Hello, how are you?"
+        - "What's the weather like today?"
+        - "How do I make a cup of coffee?"
+        - "What's the capital of France?"
+        - "What time is it?"
+        Respond independently without referring to the retrieved context."""
 
     @staticmethod
     def _gen_qa_template():
-        return """You are an assistant for question-answering tasks. \
-                Use three sentences maximum and keep the answer concise."""
+        return """You are Colin, an LLM-driven guide for Lotus Starlight Avenue. \
+        Your role is to assist users by answering questions and providing detailed information about Lotus's \
+        brand promotion and its famous historical models."""
 
     def custom_history_template(self, contextualize_q_system_prompt):
         self.history_prompt = ChatPromptTemplate.from_messages(
