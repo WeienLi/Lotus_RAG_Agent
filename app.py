@@ -1,130 +1,144 @@
-from flask import Flask, request, jsonify, Response
-from flask_cors import CORS
-import requests
-import json
-import subprocess
-import time
-import logging
-import sys
 import os
-from db.chromaManager import ChromaManager, load_config
+import sys
+import json
+import logging
+import yaml
+import traceback
+import time
+from functools import wraps
+from flask import Flask, request, Response, stream_with_context
+from flask_cors import CORS
+from langchain_community.chat_models import ChatOllama
+
+from utils.chromaManager import ChromaManager
+from utils.ollamaManager import OllamaManager
+
+os.environ['HF_ENDPOINT'] = os.getenv('HF_ENDPOINT', 'https://hf-mirror.com')
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 CORS(app)
 
-OLLAMA_SERVER_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3:8b"
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+class GlobalResponseHandler:
+    @staticmethod
+    def success(data=None, message="Success", status_code=200, response_time=None):
+        return GlobalResponseHandler._create_response("success", message, data, status_code, response_time)
 
-config_path = "/root/autodl-tmp/LLM4Lotus/code/RAG_Agent/config/config.yaml"
-config = load_config(config_path)
-chroma_manager = ChromaManager(config, 'lotus')
-chroma_manager.load_model()
+    @staticmethod
+    def error(message="An error occurred", data=None, status_code=400, response_time=None):
+        return GlobalResponseHandler._create_response("error", message, data, status_code, response_time)
+
+    @staticmethod
+    def _create_response(status, message, data, status_code, response_time):
+        response = {
+            "status": status,
+            "message": message,
+            "data": data,
+            "response_time": response_time
+        }
+        response_json = json.dumps(response)
+        return Response(response=response_json, status=status_code, mimetype='application/json')
+
+    @staticmethod
+    def stream_response(generate_func):
+        return Response(stream_with_context(generate_func()), content_type='text/event-stream')
 
 
-def check_and_start_service():
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        return yaml.safe_load(file)
+
+
+def timing_decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            logging.info(f"Function '{func.__name__}' executed in {elapsed_time:.2f} seconds")
+        return result
+
+    return wrapper
+
+
+@timing_decorator
+def warm_up(config):
     try:
-        response = requests.post(OLLAMA_SERVER_URL, json={"model": MODEL_NAME, "prompt": "", "stream": False})
-        if response.status_code == 200:
-            logger.info("llama3-8b service is already running.")
-            return
-    except requests.exceptions.RequestException:
-        logger.info("llama3-8b service is not running, attempting to start...")
-
-    subprocess.Popen(['nohup', 'ollama', 'serve', '&'])
-    logger.info("Starting llama3-8b service...")
-
-    time.sleep(10)
-
-    try:
-        response = requests.post(OLLAMA_SERVER_URL, json={"model": MODEL_NAME, "prompt": "", "stream": False})
-        if response.status_code == 200:
-            logger.info("llama3-8b service has successfully started.")
-        else:
-            raise Exception("Failed to start llama3-8b service.")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to start llama3-8b service: {e}")
-
-
-def warm_up():
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    payload = {
-        "model": MODEL_NAME,
-        "prompt": "Hello!",
-        "stream": True
-    }
-
-    logger.info("Warming up the model...")
-    logger.info(f"Sending request to {OLLAMA_SERVER_URL} with payload: {json.dumps(payload)}")
-    response = requests.post(OLLAMA_SERVER_URL, headers=headers, json=payload, stream=True)
-
-    if response.status_code != 200:
-        raise Exception(f"Warm-up request failed with status code {response.status_code}")
-
-    for line in response.iter_lines():
-        if line:
-            decoded_line = line.decode('utf-8')
-            logger.info(f"Warm-up response from model: {decoded_line}")
-            break
-
-    logger.info("Warm-up complete. Model is ready to use.")
+        llm = ChatOllama(model=config['llm'])
+        llm.invoke("Warm up")
+    except Exception as e:
+        logging.error(f'Warm-up request failed: {str(e)}')
 
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    logger.info("Received a request...")
+    data = request.json
+    question = data.get('question')
+
+    if not question:
+        return GlobalResponseHandler.error(message="Question not provided")
+
     try:
-        data = request.json
-        logger.info(f"Request data: {data}")
-        prompt = data.get('prompt')
-        if not prompt:
-            logger.error("No prompt provided in the request.")
-            return jsonify({"error": "No prompt provided"}), 400
+        start_time = time.perf_counter()
 
-        results = chroma_manager.retrieve_top_k(prompt, k=3)
+        def generate_response():
+            pr, flag = ollama_manager.chat(question, 'ab123')
+            first_response_time = time.perf_counter()
+            response_time = first_response_time - start_time
 
-        # template
-        context = "\n\n".join([result[0].page_content for result in results])
+            logging.info(f"Time to first response: {response_time:.2f} seconds")
 
-        combined_prompt = f"Context: {context}\n\nUser Question: {prompt}"
-        # combined_prompt = f"{prompt}"
-        print(combined_prompt)
+            first_response_logged = False
 
-        return Response(stream_request(combined_prompt), content_type='text/event-stream')
+            for partial_response in pr:
+                json_data = json.dumps({'response': partial_response, 'general_or_rag': flag})
+                yield f"data: {json_data}\n\n"
+                if not first_response_logged:
+                    first_response_logged = True
+                    logging.info(f"First response sent in {response_time:.2f} seconds")
+                # time.sleep(0.01)
+
+        return GlobalResponseHandler.stream_response(generate_response)
 
     except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"An error occurred in /chat endpoint: {str(e)}")
+        logging.error("".join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+        return GlobalResponseHandler.error(message=str(e))
 
 
-def stream_request(prompt):
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    payload = {
-        "model": MODEL_NAME,
-        "prompt": prompt,
-        "stream": True
-    }
-
-    response = requests.post(OLLAMA_SERVER_URL, headers=headers, json=payload, stream=True)
-
-    if response.status_code != 200:
-        yield f"data: {{\"error\": \"Request failed with status code {response.status_code}\"}}\n\n"
-        return
-
-    for line in response.iter_lines():
-        if line:
-            decoded_line = line.decode('utf-8')
-            logger.info(f"Response from model: {decoded_line}")
-            yield f"data: {decoded_line}\n\n"
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logging.error(f"An unexpected error occurred: {str(e)}")
+    return GlobalResponseHandler.error(message="Internal Server Error")
 
 
-if __name__ == '__main__':
-    # check_and_start_service()
-    # warm_up()
-    app.run(host='0.0.0.0', port=5001, debug=True)
+if __name__ == "__main__":
+    config_path = os.getenv('CONFIG_PATH', './config/config.yaml')
+    config = load_config(config_path)
+
+    model_name = config.get('llm')
+    if not model_name:
+        logging.error("LLM model name is not configured.")
+        sys.exit(1)
+
+    logging.info(f"Using model: {model_name}")
+
+    try:
+        chroma_manager = ChromaManager(config, 'lotus')
+        chroma_manager.load_model()
+        db_ret = chroma_manager.get_retriever(k=10, retriever_type="ensemble")
+        ollama_manager = OllamaManager(config, db_ret)
+
+        warm_up(config)
+
+        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5001)))
+
+    except Exception as e:
+        logging.error(f"An error occurred during initialization: {str(e)}")
+        sys.exit(1)
