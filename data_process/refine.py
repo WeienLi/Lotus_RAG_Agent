@@ -45,64 +45,78 @@ def refine_content_with_kimi(content):
             if "rate_limit_reached_error" in error_message:
                 print("Rate limit reached. Sleeping for 15 seconds...")
                 time.sleep(15)
+            elif "high risk" in error_message:
+                print("High risk error detected. Sleeping for 1 minute...")
+                time.sleep(60)
             else:
                 print(f"Error: {e}")
                 return None
 
-def process_chunks(input_file, output_file):
+def process_chunks(input_file, output_prefix):
     with open(input_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    refined_chunks = []
+    total_chunks = len(data)
+    batch_size = 100
+    num_batches = (total_chunks + batch_size - 1) // batch_size
 
-    for item in tqdm(data[:5], desc="Processing chunks"):  # Process only the top n chunks with a progress bar
-        combined_content = f"Content: {item['content']}"
-        if item.get('car_stats'):
-            car_stats_part = f" Car Stats: {item['car_stats'][0]}"
-        else:
-            car_stats_part = ""
-        combined_content += car_stats_part
+    for batch_index in tqdm(range(num_batches), desc="Processing batches"):
+        refined_chunks = []
+        start_index = batch_index * batch_size
+        end_index = min(start_index + batch_size, total_chunks)
 
-        while True:
-            refined_chunk = refine_content_with_kimi(combined_content.strip())
-            time.sleep(1)  # Add a 1-second delay to avoid hitting rate limits
-            if refined_chunk:
-                try:
-                    if "Car Stats:" in refined_chunk:
-                        refined_content, refined_car_stats = refined_chunk.split("Car Stats:")
-                        refined_content = refined_content.replace("Content:", "").strip()
-                        refined_car_stats = refined_car_stats.strip()
-                    else:
-                        refined_content = refined_chunk.replace("Content:", "").strip()
-                        refined_car_stats = ""
-                    
-                    refined_data = {
-                        "content": refined_content,
-                        "page_number": item["page_number"],
-                        "id": item["id"]
-                    }
-                    if refined_car_stats:
-                        refined_data["car_stats"] = [refined_car_stats]
-                    refined_chunks.append(refined_data)
-                    break  # Break out of the while loop once successful
-                except Exception as e:
-                    print(f"Error processing refined chunk: {e}")
-                    print(f"Refined chunk: {refined_chunk}")
-                    break  # Break out of the while loop on processing error
+        for item in tqdm(data[start_index:end_index], desc=f"Processing chunks in batch {batch_index + 1}/{num_batches}", leave=False):
+            combined_content = f"Content: {item['content']}"
+            if item.get('car_stats'):
+                car_stats_part = f" Car Stats: {item['car_stats'][0]}"
             else:
-                print("No refined data returned from the API. Retrying...")
-                time.sleep(10)  # Sleep for 10 seconds before retrying
+                car_stats_part = ""
+            combined_content += car_stats_part
 
-    # Print and save the refined chunks
-    if refined_chunks:
-        final_output = json.dumps(refined_chunks, ensure_ascii=False, indent=4)
-        #print(final_output)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(final_output)
-    else:
-        print("No refined chunks to save.")
+            while True:
+                refined_chunk = refine_content_with_kimi(combined_content.strip())
+                time.sleep(1)  # Add a 1-second delay to avoid hitting rate limits
+                if refined_chunk:
+                    try:
+                        if "Car Stats:" in refined_chunk:
+                            refined_content, refined_car_stats = refined_chunk.split("Car Stats:")
+                            refined_content = refined_content.replace("Content:", "").strip()
+                            refined_car_stats = refined_car_stats.strip()
+                        else:
+                            refined_content = refined_chunk.replace("Content:", "").strip()
+                            refined_car_stats = ""
+
+                        refined_data = {
+                            "content": refined_content,
+                            "page_number": item["page_number"],
+                            "id": item["id"]
+                        }
+                        if refined_car_stats:
+                            refined_data["car_stats"] = [refined_car_stats]
+                        refined_chunks.append(refined_data)
+                        break  # Break out of the while loop once successful
+                    except Exception as e:
+                        print(f"Error processing refined chunk: {e}")
+                        print(f"Refined chunk: {refined_chunk}")
+                        break  # Break out of the while loop on processing error
+                else:
+                    print("No refined data returned from the API. Retrying...")
+                    time.sleep(10)  # Sleep for 10 seconds before retrying
+
+        # Save the refined chunks for this batch
+        if refined_chunks:
+            final_output = json.dumps(refined_chunks, ensure_ascii=False, indent=4)
+            output_file = f"{output_prefix}_{batch_index + 1}.json"
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(final_output)
+            print(f"Saved batch {batch_index + 1} to {output_file}")
+
+        # Wait for 1 minute before processing the next batch
+        if batch_index + 1 < num_batches:
+            print("Sleeping for 1 minute before processing the next batch...")
+            time.sleep(60)
 
 # Example usage
 input_file = '../Data/split_car_stats.json'
-output_file = '../Data/split_car_stats_refine.json'
-process_chunks(input_file, output_file)
+output_prefix = '../Data/split_car_stats_refine'
+process_chunks(input_file, output_prefix)
