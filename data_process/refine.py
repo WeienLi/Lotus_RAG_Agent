@@ -17,8 +17,8 @@ def refine_content_with_kimi(content):
     prompt = f"""
     Refine the following text by:
     1. Removing inappropriate symbols and replacing them with spaces or correct punctuation.
-    2. Correcting obvious typos.
-    3. Removing incomplete sentences at the beginning and end.
+    2. Correcting obvious typos. Insert necessary spaces to between words.
+    3. Removing incomplete sentences at the beginning and end such as "Table of Contents" but not followed with a table of contents.
     4. Formatting car stats with labels and values clearly separated by colons.
     Output the refined text as a single continuous paragraph using only normal human-readable symbols. Do not use any newline characters (\\n, \\n, /n, //n, /n-, \\n-), slashes (/), backslashes (\\\\), or other special characters.
 
