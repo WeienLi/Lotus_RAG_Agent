@@ -21,5 +21,5 @@ def merge_and_sort_json(input_pattern, output_file):
 
 if __name__ == "__main__":
     input_pattern = "../Data/split_car_stats_refine_*.json"
-    output_file = "../Data/merged_sorted_car_stats.json"
+    output_file = "../Data/intermediate_data/car_stats_data/merged_sorted_car_stats.json"
     merge_and_sort_json(input_pattern, output_file)
