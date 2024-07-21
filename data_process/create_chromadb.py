@@ -10,7 +10,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 load_dotenv()
 
 # Define file path and collection name
-file_path = "../Data/intermediate_data/car_stats_data/split_car_stats.json"
+file_path = "../data/intermediate_data/car_stats_data/split_car_stats.json"
 collection_name = "test"
 
 # Load the JSON file

@@ -1,4 +1,4 @@
-file_path: "../Data/split_car_stats.json"
+file_path: "../data/split_car_stats.json"
 persist_directory: "chroma/lotus"
 embeddings_model_name: "intfloat/multilingual-e5-large"
 llm: "gemma2:9b"
