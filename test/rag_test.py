@@ -21,7 +21,7 @@ def load_db(config):
     manager.load_and_store_data()
 
 
-def test_retrieval_acc(config, test_directory='../Data/test_data', k=10):
+def test_retrieval_acc(config, test_directory='../data/test_data', k=10):
     manager = ChromaManager(config, 'lotus')
     manager.load_model()
 
@@ -68,5 +68,5 @@ def test_if_query_rag(config, test_directory):
 if __name__ == '__main__':
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    # test_retrieval_acc(config, '/root/autodl-tmp/RAG_Agent/Data/test_data', k=10)
-    test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
+    # test_retrieval_acc(config, '/root/autodl-tmp/RAG_Agent/data/test_data', k=10)
+    test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/data/test_need_rag')
