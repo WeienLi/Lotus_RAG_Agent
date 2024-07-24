@@ -77,7 +77,7 @@ if __name__ == "__main__":
     print("JSON database loaded.")
 
     processed_data = preprocess_data(data)
-    print("Data preprocessing complete.")
+    print("data preprocessing complete.")
 
     save_json(processed_data, output_file_path)
     print(f"Processed database with car stats has been saved to {output_file_path}")

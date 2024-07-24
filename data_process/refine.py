@@ -4,14 +4,10 @@ import time
 from openai import OpenAI
 from tqdm import tqdm
 
-# Replace with your Moonshot API key and endpoint
-API_KEY = 'sk-0vPjiNkbFhOBk9yWi7PViLXdlkmgEqbP2CBDTGLh9hF3nWpX'
-API_URL = 'https://api.moonshot.cn/v1'
-
-def refine_content_with_kimi(content):
+def refine_content_with_kimi(content, api_key):
     client = OpenAI(
-        api_key=API_KEY,
-        base_url=API_URL,
+        api_key=api_key,
+        base_url='https://api.moonshot.cn/v1',
     )
     
     prompt = f"""
@@ -53,7 +49,7 @@ def refine_content_with_kimi(content):
                 print(f"Error: {e}")
                 return None
 
-def process_chunks(input_file, output_file, start, end):
+def process_chunks(input_file, output_file, start, end, api_key):
     with open(input_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -68,7 +64,7 @@ def process_chunks(input_file, output_file, start, end):
         combined_content += car_stats_part
 
         while True:
-            refined_chunk = refine_content_with_kimi(combined_content.strip())
+            refined_chunk = refine_content_with_kimi(combined_content.strip(), api_key)
             time.sleep(1)  # Add a 1-second delay to avoid hitting rate limits
             if refined_chunk:
                 try:
@@ -109,4 +105,5 @@ if __name__ == "__main__":
     output_file = sys.argv[2]
     start = int(sys.argv[3])
     end = int(sys.argv[4])
-    process_chunks(input_file, output_file, start, end)
+    api_key = sys.argv[5]
+    process_chunks(input_file, output_file, start, end, api_key)

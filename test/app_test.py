@@ -3,8 +3,7 @@ import json
 import sys
 
 
-def stream_chat(prompt):
-    url = "http://localhost:5001/chat"
+def stream_chat(prompt, url):
     headers = {
         'Content-Type': 'application/json'
     }
@@ -68,12 +67,17 @@ def test_chat(url):
                             data = json.loads(buffer)
                             buffer = ""
                             response_text = data.get('response', '')
+                            flag = data.get('general_or_rag', '')
+                            # print(flag)
                             if response_text:
                                 sys.stdout.write(response_text)
+                                # sys.stdout.write(f"Response: {response_text}\n")
+                                # sys.stdout.write(f"general_or_rag: {flag}\n")
                                 sys.stdout.flush()
                         except json.JSONDecodeError as e:
                             print(f"JSON decode error: {e}")
                             buffer = ""
+        # print(flag)
         print("\n")
 
 
@@ -81,5 +85,5 @@ if __name__ == "__main__":
     # user_input = input("Enter your prompt: ")
     # user_input = "What modifications were made to the Seven's chassis and rear extensions, and who assisted Colin in building the Mark IIIs?"
     # stream_chat(user_input)
-    url = "http://127.0.0.1:5001/chat"
+    url = "http://127.0.0.1:6006/chat"
     test_chat(url)
