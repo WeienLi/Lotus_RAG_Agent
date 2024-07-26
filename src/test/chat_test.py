@@ -71,5 +71,5 @@ if __name__ == "__main__":
     config_path = "../config/config.yaml"
     config = load_config(config_path)
     chroma_manager = ChromaManager(config, 'lotus')
-    chroma_manager.load_model()
+    chroma_manager.create_collection()
     test_chat_manager(config, "test_session", chroma_manager)

@@ -38,60 +38,75 @@ class ChromaManager:
         self.llm = ChatOllama(model=config['llm'])
         self.collection_name = collection_name
         self.batch_size = batch_size
-
-        logging.info("Initializing ChromaManager")
-
-    def load_model(self):
         try:
             logging.info("Loading embedding model...")
-
             self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
-
-            self.chroma_db = Chroma(
-                embedding_function=self.embeddings,
-                persist_directory=self.persist_directory,
-                collection_name=self.collection_name,
-                relevance_score_fn="l2"  # l2, ip, cosine
-            )
-            logging.info("Model loaded successfully.")
+            self.chroma_db = None
+            logging.info("Embedding model loaded successfully.")
         except Exception as e:
-            logging.error(f"Failed to load model: {e}")
+            logging.error(f"Failed to load embedding model: {e}")
+
+    def create_collection(self, collection_name=None):
+        if collection_name is not None:
+            self.collection_name = collection_name
+
+        logging.info(f"Initializing ChromaManager collection {self.collection_name}")
+
+        self.chroma_db = Chroma(
+            embedding_function=self.embeddings,
+            persist_directory=self.persist_directory,
+            collection_name=self.collection_name,
+            relevance_score_fn="l2"  # l2, ip, cosine
+        )
 
     def load_and_store_data(self):
-        loader = JSONLoader(file_path=self.file_path, jq_schema=".[]", text_content=False)
-        documents = loader.load()
-
         content_list = []
         metadata_list = []
+        global_id = 0
 
-        for doc in documents:
-            content_dict = json.loads(doc.page_content)
-            content = content_dict.get("content", "")
-            content_list.append(content)
-            metadata = {
-                "page_number": content_dict.get("page_number"),
-                "car_stats": json.dumps(content_dict.get("car_stats", "N/A")) if isinstance(
-                    content_dict.get("car_stats"), list) else content_dict.get("car_stats", "N/A"),
-                "id": str(content_dict.get("id"))
-            }
-            metadata_list.append(metadata)
+        for filename in os.listdir(self.file_path):
+            if filename.endswith(".json"):
+                json_file = os.path.join(self.file_path, filename)
+                loader = JSONLoader(file_path=json_file, jq_schema=".[]", text_content=False)
+                documents = loader.load()
+
+                for doc in documents:
+                    content_dict = json.loads(doc.page_content)
+                    content = content_dict.get("content", "")
+                    content_list.append(content)
+                    metadata = {
+                        "filename": filename,
+                        "page_number": content_dict.get("page_number"),
+                        "car_stats": json.dumps(content_dict.get("car_stats", "")) if isinstance(
+                            content_dict.get("car_stats"), list) else content_dict.get("car_stats", ""),
+                        "id": str(content_dict.get("id")),
+                        "global_id": global_id
+                    }
+                    metadata_list.append(metadata)
+                    global_id += 1
 
         for i in tqdm(range(0, len(content_list), self.batch_size), desc="Storing database"):
             batch_contents = content_list[i:i + self.batch_size]
             batch_metadata = metadata_list[i:i + self.batch_size]
             embeddings_list = self.embeddings.embed_documents(batch_contents)
             for content, embedding, metadata in zip(batch_contents, embeddings_list, batch_metadata):
-                self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata], ids=[metadata['id']])
+                self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata])
 
-        self.chroma_db.persist()
         logging.info("Chroma vector database created and persisted successfully.")
 
     def insert(self, documents, metadatas):
         embeddings_list = self.embeddings.embed_documents(documents)
         for content, embedding, metadata, doc_id in zip(documents, embeddings_list, metadatas):
             self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata], ids=[metadata['id']])
-        self.chroma_db.persist()
+
         logging.info("New documents inserted successfully.")
+
+    def remove_all(self):
+        try:
+            self.chroma_db.delete_collection()
+            logging.info(f"Successful to remove documents from the collection '{self.collection_name}'")
+        except Exception as e:
+            logging.error(f"Failed to remove documents from the collection '{self.collection_name}': {e}")
 
     def check_db(self):
         logging.info(f"There are {self.chroma_db._collection.count()} in the collection")
@@ -138,6 +153,7 @@ class ChromaManager:
             question = query["question"]
             expected_page_num = query["page_num"]
             expected_id = query["id"]
+            expected_file = "car_stats.json"
 
             results = retriever.invoke(question)
             id_found = False
@@ -145,6 +161,8 @@ class ChromaManager:
             for result in results:
                 if isinstance(result, tuple):
                     result = result[0]
+                if str(result.metadata['filename']) != expected_file:
+                    continue
                 if str(result.metadata['id']) == str(expected_id):
                     id_found = True
                     page_num_found = True
@@ -161,6 +179,7 @@ class ChromaManager:
 
             if save:
                 result_entry = {
+                    'expected_file': expected_file,
                     'id_found': id_found,
                     'expected_id': expected_id,
                     'page_num_found': page_num_found,

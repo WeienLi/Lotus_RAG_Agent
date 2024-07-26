@@ -11,6 +11,56 @@ from langchain.chains.combine_documents.base import (
     DEFAULT_DOCUMENT_SEPARATOR,
     DOCUMENTS_KEY,
 )
+from langchain_core.callbacks import StreamingStdOutCallbackHandler
+import queue
+import threading
+from typing import Dict, Any
+
+
+class ThreadedGenerator:
+    def __init__(self):
+        self.queue = queue.Queue()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        item = self.queue.get()
+        if item is StopIteration:
+            raise item
+        return item
+
+    def send(self, data):
+        self.queue.put(data)
+
+    def close(self):
+        self.queue.put(StopIteration)
+
+
+class ChainStreamHandler(StreamingStdOutCallbackHandler):
+    def __init__(self, gen):
+        super().__init__()
+        self.gen = gen
+
+    def on_llm_new_token(self, token: str, **kwargs):
+        self.gen.send(token)
+
+
+class SelectiveStreamHandler(StreamingStdOutCallbackHandler):
+    def __init__(self, gen):
+        super().__init__()
+        self.gen = gen
+        self.is_qa_chain = False
+
+    def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs):
+        # Check if 'context' is in inputs, which should only be true for the QA part
+        # print(inputs)
+        # print(self.is_qa_chain)
+        self.is_qa_chain = 'context' in inputs.keys()
+
+    def on_llm_new_token(self, token: str, **kwargs):
+        if self.is_qa_chain:
+            self.gen.send(token)
 
 
 def format_document(doc):
@@ -21,6 +71,7 @@ def format_document(doc):
 
 class OllamaManager:
     def __init__(self, config, db_ret):
+        # self.sllm = ChatOllama(model=config['sllm'])
         self.llm = ChatOllama(model=config['llm'])
         self.qa_prompt = self._qa_template()
         self.gen_qa_prompt = self._gen_qa_template()
@@ -209,9 +260,109 @@ class OllamaManager:
             output_messages_key="answer",
         )
 
+    # def build_chain(self):
+    #     history_aware_retriever = create_history_aware_retriever(
+    #         self.llm, self.db_ret, self._history_template()
+    #     )
+
+    #     retrieval_chain = (
+    #         RunnablePassthrough.assign(retrieved_documents=history_aware_retriever)
+    #         | (lambda x: {
+    #             "input": x["input"],
+    #             "chat_history": x["chat_history"],
+    #             "context": DEFAULT_DOCUMENT_SEPARATOR.join(format_document(doc) for doc in x["retrieved_documents"])
+    #         })
+    #     ).with_config(run_name="retrieval_chain")
+
+    #     qa_prompt = ChatPromptTemplate.from_messages([
+    #         ("system", self.qa_prompt),
+    #         MessagesPlaceholder("chat_history"),
+    #         ("human", "{input}"),
+    #     ])
+
+    #     qa_chain = (
+    #         qa_prompt 
+    #         | self.llm 
+    #         | StrOutputParser()
+    #         | (lambda x: {"answer": x, "rag_or_general": "rag"})
+    #     ).with_config(run_name="qa_chain")
+
+    #     combined_chain = retrieval_chain | qa_chain
+
+    #     general_qa_prompt = ChatPromptTemplate.from_messages([
+    #         ("system", self.gen_qa_prompt),
+    #         MessagesPlaceholder("chat_history"),
+    #         ("human", "{input}"),
+    #     ])
+    #     general_qa_chain = (
+    #         RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
+    #         | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
+    #                     "rag_or_general": "general"})
+    #     )
+
+    #     def decide_and_cache(inputs):
+    #         question = inputs["input"]
+    #         return self.decide_rag_or_general(question)
+
+    #     branched_chain = RunnableBranch(
+    #         (lambda x: decide_and_cache(x) == "need rag", combined_chain),
+    #         (lambda x: decide_and_cache(x) == "no rag", general_qa_chain),
+    #         general_qa_chain
+    #     )
+    #     final_chain = (
+    #         RunnablePassthrough().assign(
+    #             rag_or_general=decide_and_cache
+    #         )
+    #         | branched_chain
+    #     )
+
+    #     def get_session_history(session_id: str) -> BaseChatMessageHistory:
+    #         if session_id not in self.store:
+    #             self.store[session_id] = ChatMessageHistory()
+    #         return self.store[session_id]
+
+    #     return RunnableWithMessageHistory(
+    #         final_chain,
+    #         get_session_history,
+    #         input_messages_key="input",
+    #         history_messages_key="chat_history",
+    #         output_messages_key="answer",
+    #     )
+
+    def llm_thread(self, g, query, session_id):
+        try:
+            selective_handler = SelectiveStreamHandler(g)
+
+            res = self.rag_chain.invoke(
+                {"input": query},
+                config={
+                    "configurable": {"session_id": session_id},
+                    "callbacks": [selective_handler]
+                },
+            )
+            # print(res)
+            g.send(("FLAG", res.get("rag_or_general", "unknown")))
+        finally:
+            g.close()
+
+    # def llm_thread(self, g, query, session_id):
+    #     try:
+    #         streaming_handler = ChainStreamHandler(g)
+    #         #self.llm.callbacks = [streaming_handler]
+
+    #         res = self.rag_chain.invoke(
+    #             {"input": query},
+    #             config={
+    #                 "configurable": {"session_id": session_id},
+    #                 "callbacks": [streaming_handler]
+    #             },
+    #         )
+    #         print(res["answer"])
+    #         g.send(("FLAG", res.get("rag_or_general", "unknown")))
+    #     finally:
+    #         g.close()
+
     def chat(self, query, session_id):
-        res = self.rag_chain.invoke(
-            {"input": query},
-            config={"configurable": {"session_id": session_id}},
-        )
-        return res["answer"], res["rag_or_general"]
+        g = ThreadedGenerator()
+        threading.Thread(target=self.llm_thread, args=(g, query, session_id)).start()
+        return g
