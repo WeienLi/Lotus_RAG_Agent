@@ -1,5 +1,0 @@
-file_path: "../data/split_car_stats.json"
-persist_directory: "chroma/lotus"
-embeddings_model_name: "intfloat/multilingual-e5-large"
-llm: "gemma2:9b"
-llm_s : "qwen2:0.5b"

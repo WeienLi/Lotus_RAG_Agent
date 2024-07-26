@@ -72,6 +72,8 @@ def warm_up(config):
     try:
         llm = ChatOllama(model=config['llm'])
         llm.invoke("Warm up")
+        # sllm = ChatOllama(model=config['sllm'])
+        # sllm.invoke("Warm up")
     except Exception as e:
         logging.error(f'Warm-up request failed: {str(e)}')
 
@@ -88,29 +90,72 @@ def chat():
         start_time = time.perf_counter()
 
         def generate_response():
-            pr, flag = ollama_manager.chat(question, 'ab123')
+            gen = ollama_manager.chat(question, 'ab123')
             first_response_time = time.perf_counter()
             response_time = first_response_time - start_time
 
             logging.info(f"Time to first response: {response_time:.2f} seconds")
 
             first_response_logged = False
+            full_response = ""
+            rag_or_general = "unknown"
 
-            for partial_response in pr:
-                json_data = json.dumps({'response': partial_response, 'general_or_rag': flag})
-                yield f"data: {json_data}\n\n"
-                if not first_response_logged:
-                    first_response_logged = True
-                    logging.info(f"First response sent in {response_time:.2f} seconds")
-                # time.sleep(0.01)
+            for item in gen:
+                if isinstance(item, tuple) and item[0] == "FLAG":
+                    rag_or_general = item[1]
+                else:
+                    full_response += item
+                    json_data = json.dumps({'response': item, 'general_or_rag': rag_or_general})
+                    yield f"data: {json_data}\n\n"
+                    if not first_response_logged:
+                        first_response_logged = True
+                        logging.info(f"First token sent in {response_time:.2f} seconds")
 
-        return GlobalResponseHandler.stream_response(generate_response)
+            logging.info(f"Full response: {full_response}")
+            logging.info(f"Flag: {rag_or_general}")
+
+        return Response(stream_with_context(generate_response()), content_type='text/event-stream')
 
     except Exception as e:
         logging.error(f"An error occurred in /chat endpoint: {str(e)}")
         logging.error("".join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
         return GlobalResponseHandler.error(message=str(e))
 
+
+# @app.route('/chat', methods=['POST'])
+# def chat():
+#     data = request.json
+#     question = data.get('question')
+
+#     if not question:
+#         return GlobalResponseHandler.error(message="Question not provided")
+
+#     try:
+#         start_time = time.perf_counter()
+
+#         def generate_response():
+#             pr, flag = ollama_manager.chat(question, 'ab123')
+#             first_response_time = time.perf_counter()
+#             response_time = first_response_time - start_time
+
+#             logging.info(f"Time to first response: {response_time:.2f} seconds")
+
+#             first_response_logged = False
+
+#             for partial_response in pr:
+#                 json_data = json.dumps({'response': partial_response, 'general_or_rag': flag})
+#                 yield f"data: {json_data}\n\n"
+#                 if not first_response_logged:
+#                     first_response_logged = True
+#                     logging.info(f"First response sent in {response_time:.2f} seconds")
+#                 # time.sleep(0.01)
+
+#         return GlobalResponseHandler.stream_response(generate_response)
+
+#     except Exception as e:
+#         logging.error(f"An error occurred in /chat endpoint: {str(e)}")
+#         logging.error("".join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+#        return GlobalResponseHandler.error(message=str(e))
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -123,21 +168,23 @@ if __name__ == "__main__":
     config = load_config(config_path)
 
     model_name = config.get('llm')
+    smodel_name = config.get('sllm')
     if not model_name:
         logging.error("LLM model name is not configured.")
         sys.exit(1)
 
     logging.info(f"Using model: {model_name}")
+    logging.info(f"Streaming model: {smodel_name}")
 
     try:
         chroma_manager = ChromaManager(config, 'lotus')
-        chroma_manager.load_model()
+        chroma_manager.create_collection()
         db_ret = chroma_manager.get_retriever(k=10, retriever_type="ensemble")
         ollama_manager = OllamaManager(config, db_ret)
 
         warm_up(config)
 
-        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5001)))
+        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 6006)))
 
     except Exception as e:
         logging.error(f"An error occurred during initialization: {str(e)}")
