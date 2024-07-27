@@ -6,8 +6,8 @@ from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.chromaManager import ChromaManager
-from utils.ollamaManager import OllamaManager
+from src.utils.chromaManager import ChromaManager
+from src.utils.ollamaManager import OllamaManager
 
 
 def load_config(config_path):
@@ -26,8 +26,8 @@ def remove_collection(manager):
 
 
 if __name__ == '__main__':
-    config_path = "../config/config.yaml"
+    config_path = "../src/config/config.yaml"
     config = load_config(config_path)
     manager = ChromaManager(config, 'lotus')
-    remove_collection(manager)
+    # remove_collection(manager)
     load_db(manager)
