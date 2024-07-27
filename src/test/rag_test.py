@@ -15,8 +15,8 @@ def load_config(config_path):
         return yaml.safe_load(file)
 
 
-def test_retrieval_acc(config, test_directory='../Data/test_data', k=10):
-    manager = ChromaManager(config, 'lotus')
+def test_retrieval_acc(config, collection_name, test_directory='../Data/test_data', k=10):
+    manager = ChromaManager(config, collection_name)
     manager.create_collection()
 
     test_queries = []
@@ -31,8 +31,8 @@ def test_retrieval_acc(config, test_directory='../Data/test_data', k=10):
     print(f"Accuracy: {accuracy * 100:.2f}%")
 
 
-def test_if_query_rag(config, test_directory):
-    chroma_manager = ChromaManager(config, 'lotus')
+def test_if_query_rag(config, collection_name, test_directory):
+    chroma_manager = ChromaManager(config, collection_name)
     chroma_manager.create_collection()
     db_ret = chroma_manager.get_db_as_ret(search_kwargs={"k": 10})
     ollama_manager = OllamaManager(config, db_ret)
@@ -62,5 +62,6 @@ def test_if_query_rag(config, test_directory):
 if __name__ == '__main__':
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    test_retrieval_acc(config, '/root/autodl-tmp/RAG_Agent/data/test_data/test_rag', k=10)
-    # test_if_query_rag(config, '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')
+    test_retrieval_acc(config, 'lotus_car_stats',
+                       '/root/autodl-tmp/RAG_Agent/data/test_data/test_rag', k=10)
+    # test_if_query_rag(config, 'lotus', '/root/autodl-tmp/RAG_Agent/Data/test_need_rag')

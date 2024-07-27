@@ -28,6 +28,15 @@ def remove_collection(manager):
 if __name__ == '__main__':
     config_path = "../src/config/config.yaml"
     config = load_config(config_path)
-    manager = ChromaManager(config, 'lotus')
-    # remove_collection(manager)
-    load_db(manager)
+    collection0_dir = "./final_data/lotus"  # lotus, all data
+    collection1_dir = "./final_data/lotus_car_stats"  # lotus_car_stats
+    collection2_dir = "./final_data/lotus_brand_info"  # lotus_brand_info
+    collection_dir_lst = [collection0_dir, collection1_dir, collection2_dir]
+    for collection_dir in collection_dir_lst:
+        manager = ChromaManager(
+            config=config,
+            collection_name=collection_dir.split('/')[-1],
+            file_path=collection_dir
+        )
+        # remove_collection(manager)
+        load_db(manager)

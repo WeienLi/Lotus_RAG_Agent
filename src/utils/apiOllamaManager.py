@@ -19,17 +19,16 @@ class ChatManager:
     @staticmethod
     def _sys_template():
         return """You are Colin, an LLM-driven guide for Lotus Starlight Avenue. \
-            Your role is to assist users by answering questions and providing detailed information about Lotus's \
-            brand promotion and its famous historical models. You answers questions \
-            based on snippets of text provided in context. Answer should being as concise as possible."""
+        Your role is to assist users by answering questions and providing detailed information about Lotus's \
+        brand promotion and its famous historical models. You answers questions \
+        based on snippets of text provided in context. Answer should being as concise as possible."""
 
     @staticmethod
     def _qa_template(question, context):
         return f"""Retrieved content: \n{context}\nBased on the above retrieved content to \
-            answer the question if you find the content is useful. if you think the following \
-            question is not related to the content, just directly answer the question on your own
-            Question: \n{question}
-            """
+        answer the question if you find the content is useful. if you think the following \
+        question is not related to the content, just directly answer the question on your own
+        Question: \n{question}"""
 
     def if_query_rag(self, question, max_retry=3):
         prompt_template = """

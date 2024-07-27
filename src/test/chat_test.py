@@ -19,7 +19,7 @@ def get_rag_content(response):
         car_stat_content = ""
         for car_stat in car_stats:
             car_stat_content += car_stat.replace('\n', ' ')
-        rag_content += f"Retrieval Content {i}:\n{page_content}\nCar stats Related: {car_stats}\n"
+        rag_content += f"{page_content}\nCar stats Related: {car_stats}\n"
     return rag_content
 
 
@@ -28,12 +28,11 @@ def load_config(config_path):
         return yaml.safe_load(file)
 
 
-def test_chat_manager(config, session_id, chroma_manager):
+def test_chat_manager(config, session_id, retrievers):
     base_url = config['ollama_base_url']
     model_name = config['llm']
 
     chat_manager = ChatManager(session_id, base_url, model_name)
-    retriever = chroma_manager.get_retriever(k=5, retriever_type="ensemble")
 
     print(f"Start to chat with {model_name}.")
 
@@ -43,13 +42,18 @@ def test_chat_manager(config, session_id, chroma_manager):
         if user_input.lower() == 'exit':
             break
 
-        use_rag = chat_manager.if_query_rag(user_input)
+        # use_rag = chat_manager.if_query_rag(user_input)
+        use_rag = 'need rag'
         if use_rag == 'need rag':
-            rag_context = retriever.invoke(user_input)
+            rag_context = ""
+            for retriever in retrievers:
+                rag_context += get_rag_content(retriever.invoke(user_input))
+                rag_context += '\n'
         else:
             rag_context = ""
         response = chat_manager.chat(user_input, rag_context, True)
         ai_response = ""
+        print(f"{use_rag} AI response: ", end="")
         for line in response.iter_lines():
             if line:
                 try:
@@ -70,6 +74,14 @@ if __name__ == "__main__":
     # retriever = None
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    chroma_manager = ChromaManager(config, 'lotus')
-    chroma_manager.create_collection()
-    test_chat_manager(config, "test_session", chroma_manager)
+    chroma_manager1 = ChromaManager(config=config, collection_name='lotus_car_stats')
+    chroma_manager2 = ChromaManager(config=config, collection_name='lotus_brand_info')
+    chroma_manager1.create_collection()
+    chroma_manager2.create_collection()
+
+    chroma_managers = [chroma_manager1, chroma_manager2]
+    retrievers = []
+    for chroma_manager in chroma_managers:
+        retrievers.append(chroma_manager.get_retriever(k=5, retriever_type="ensemble"))
+
+    test_chat_manager(config, "test_session", retrievers)
