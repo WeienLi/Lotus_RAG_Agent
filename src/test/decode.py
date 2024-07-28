@@ -14,7 +14,7 @@ def decode_unicode_file(input_file_path, output_file_path):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    input_file = "question_test.json"
-    output_file = "60questions.json"
+    input_file = "/root/autodl-tmp/RAG_Agent/data/test_data/llama3:8b_result.json"
+    output_file = "/root/autodl-tmp/RAG_Agent/data/test_data/llama3:8b_result40.json"
     
     decode_unicode_file(input_file, output_file)

@@ -31,13 +31,13 @@ class LineListOutputParser(BaseOutputParser[List[str]]):
 
 
 class ChromaManager:
-    def __init__(self, config, collection_name, batch_size=5):
-        self.file_path = config['file_path']
+    def __init__(self, config, collection_name, file_path=None):
+        self.file_path = config['file_path'] if file_path is None else file_path
         self.persist_directory = config['persist_directory']
         self.embeddings_model_name = config['embeddings_model_name']
         self.llm = ChatOllama(model=config['llm'])
         self.collection_name = collection_name
-        self.batch_size = batch_size
+        self.batch_size = 5
         try:
             logging.info("Loading embedding model...")
             self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
@@ -93,6 +93,7 @@ class ChromaManager:
                 self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata])
 
         logging.info("Chroma vector database created and persisted successfully.")
+        logging.info(f"There are {self.chroma_db._collection.count()} in the {self.collection_name} collection")
 
     def insert(self, documents, metadatas):
         embeddings_list = self.embeddings.embed_documents(documents)
@@ -109,7 +110,7 @@ class ChromaManager:
             logging.error(f"Failed to remove documents from the collection '{self.collection_name}': {e}")
 
     def check_db(self):
-        logging.info(f"There are {self.chroma_db._collection.count()} in the collection")
+        logging.info(f"There are {self.chroma_db._collection.count()} in the {self.collection_name} collection")
 
     def get_retriever(self, k=5, retriever_type="chroma"):
         chroma_docs = self.chroma_db.get()

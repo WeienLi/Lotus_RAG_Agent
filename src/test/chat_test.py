@@ -15,11 +15,15 @@ def get_rag_content(response):
         page_content = doc.page_content.replace('\n', '')
         if len(page_content) < 50:
             continue
-        car_stats = doc.metadata.get('car_stats', 'No car stats available')
-        car_stat_content = ""
-        for car_stat in car_stats:
-            car_stat_content += car_stat.replace('\n', ' ')
-        rag_content += f"{page_content}\nCar stats Related: {car_stats}\n"
+        car_stats = doc.metadata.get('car_stats', None)
+        if car_stats:
+            car_stat_content = ""
+            for car_stat in car_stats:
+                car_stat_content += car_stat.replace('\n', ' ')
+            rag_content += f"{page_content}\nCar stats Related: {car_stat_content}\n"
+        else:
+            rag_content += f"{page_content}\n"
+
     return rag_content
 
 
@@ -74,14 +78,13 @@ if __name__ == "__main__":
     # retriever = None
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    chroma_manager1 = ChromaManager(config=config, collection_name='lotus_car_stats')
-    chroma_manager2 = ChromaManager(config=config, collection_name='lotus_brand_info')
-    chroma_manager1.create_collection()
-    chroma_manager2.create_collection()
-
-    chroma_managers = [chroma_manager1, chroma_manager2]
+    collections = {'lotus': 0, 'lotus_car_stats': 5, 'lotus_brand_info': 5}
     retrievers = []
-    for chroma_manager in chroma_managers:
-        retrievers.append(chroma_manager.get_retriever(k=5, retriever_type="ensemble"))
+    for collection, top_k in collections.items():
+        if top_k <= 0:
+            continue
+        chroma_manager = ChromaManager(config=config, collection_name=collection)
+        chroma_manager.create_collection()
+        retrievers.append(chroma_manager.get_retriever(k=top_k, retriever_type="ensemble"))
 
     test_chat_manager(config, "test_session", retrievers)
