@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # retriever = None
     config_path = "../config/config.yaml"
     config = load_config(config_path)
-    collections = {'lotus': 0, 'lotus_car_stats': 5, 'lotus_brand_info': 5}
+    collections = {'lotus': 10, 'lotus_car_stats': 0, 'lotus_brand_info': 0}
     retrievers = []
     for collection, top_k in collections.items():
         if top_k <= 0:

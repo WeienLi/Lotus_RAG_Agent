@@ -31,8 +31,7 @@ class LineListOutputParser(BaseOutputParser[List[str]]):
 
 
 class ChromaManager:
-    def __init__(self, config, collection_name, file_path=None):
-        self.file_path = config['file_path'] if file_path is None else file_path
+    def __init__(self, config, collection_name):
         self.persist_directory = config['persist_directory']
         self.embeddings_model_name = config['embeddings_model_name']
         self.llm = ChatOllama(model=config['llm'])
@@ -59,31 +58,37 @@ class ChromaManager:
             relevance_score_fn="l2"  # l2, ip, cosine
         )
 
-    def load_and_store_data(self):
+    def load_and_store_data(self, dir_path, ignore_range=False):
         content_list = []
         metadata_list = []
         global_id = 0
 
-        for filename in os.listdir(self.file_path):
+        for filename in os.listdir(dir_path):
             if filename.endswith(".json"):
-                json_file = os.path.join(self.file_path, filename)
+                json_file = os.path.join(dir_path, filename)
                 loader = JSONLoader(file_path=json_file, jq_schema=".[]", text_content=False)
                 documents = loader.load()
 
-                for doc in documents:
+                page_range = json.loads(documents[0].page_content)
+                page_start = page_range['start']
+                page_end = page_range['end']
+
+                for doc in documents[1:]:
                     content_dict = json.loads(doc.page_content)
                     content = content_dict.get("content", "")
-                    content_list.append(content)
-                    metadata = {
-                        "filename": filename,
-                        "page_number": content_dict.get("page_number"),
-                        "car_stats": json.dumps(content_dict.get("car_stats", "")) if isinstance(
-                            content_dict.get("car_stats"), list) else content_dict.get("car_stats", ""),
-                        "id": str(content_dict.get("id")),
-                        "global_id": global_id
-                    }
-                    metadata_list.append(metadata)
-                    global_id += 1
+                    page_number = content_dict.get("page_number")
+                    if int(page_start) <= int(page_number) <= int(page_end) or ignore_range:
+                        content_list.append(content)
+                        metadata = {
+                            "filename": filename,
+                            "page_number": page_number,
+                            "car_stats": json.dumps(content_dict.get("car_stats", "")) if isinstance(
+                                content_dict.get("car_stats"), list) else content_dict.get("car_stats", ""),
+                            "id": str(content_dict.get("id")),
+                            "global_id": global_id
+                        }
+                        metadata_list.append(metadata)
+                        global_id += 1
 
         for i in tqdm(range(0, len(content_list), self.batch_size), desc="Storing database"):
             batch_contents = content_list[i:i + self.batch_size]

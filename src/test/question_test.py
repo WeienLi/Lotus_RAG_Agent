@@ -109,5 +109,5 @@ if __name__ == "__main__":
 
     results = test_chat(url, questions)
 
-    with open('/root/autodl-tmp/RAG_Agent/data/test_data/qwen2:72b_result.json', 'w') as outfile:
+    with open('/root/autodl-tmp/RAG_Agent/data/test_data/gemma2:9b_result.json', 'w') as outfile:
         json.dump(results, outfile, indent=4)

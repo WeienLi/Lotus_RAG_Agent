@@ -6,15 +6,19 @@ from langchain_community.chat_models import ChatOllama
 
 
 class ChatManager:
-    def __init__(self, session_id, base_url, model_name):
+    def __init__(self, session_id, base_url, model_name, history_limit=10):
+        assert history_limit % 2 == 0, "history_limit must be an even number"
         self.session_id = session_id
         self.base_url = base_url
         self.model_name = model_name
         self.llm = ChatOllama(model=self.model_name)
-        self.chat_history = []
-        self.chat_history.append({
+        self.chat_history = [{
             "role": "system", "content": self._sys_template()
-        })
+        }]
+        self.all_chat_history = [{
+            "role": "system", "content": self._sys_template()
+        }]
+        self.history_limit = history_limit
 
     @staticmethod
     def _sys_template():
@@ -25,20 +29,12 @@ class ChatManager:
 
     @staticmethod
     def _qa_template(question, context):
-        return f"""You are Colin, an LLM-driven guide for Lotus Starlight Avenue. \
-        Your role is to assist users by answering questions and providing detailed information about Lotus's \
-        brand promotion and its famous historical models. Use the following pieces of retrieved context to \
-        answer the question.
-        Retrieved Context: \n{context} 
-
-        If the user's question is a common, everyday query, such as:
-        - "Hello, how are you?"
-        - "What's the weather like today?"
-        - "How do I make a cup of coffee?"
-        - "What's the capital of France?"
-        - "What time is it?"
-        Respond independently without referring to the retrieved context.
-        Question: \n{question}"""
+        if context == "":
+            return f"""You can respond to the user input based on the following Retrieved Context.
+            Retrieved Context: \n{context}\n
+            User input: {question}"""
+        else:
+            return f"""{question}"""
 
     def if_query_rag(self, question, max_retry=3):
         prompt_template = """
@@ -88,7 +84,10 @@ class ChatManager:
         return result
 
     def chat(self, user_input, rag_context='', stream=False):
-        self.chat_history.append({"role": "user", "content": self._qa_template(user_input, rag_context)})
+        user_message = {"role": "user", "content": self._qa_template(user_input, rag_context)}
+        self.chat_history.append(user_message)
+        self.all_chat_history.append(user_message)
+        print(len(self.chat_history), self.chat_history)
 
         data = {
             "model": self.model_name,
@@ -102,11 +101,22 @@ class ChatManager:
         return response
 
     def save_chat_history(self, response):
-        self.chat_history.append({"role": "assistant", "content": response})
-        # print(len(self.chat_history))
+        assistant_message = {"role": "assistant", "content": response}
+        self.chat_history.append(assistant_message)
+        self.all_chat_history.append(assistant_message)
+        self._trim_chat_history()
+
+    def _trim_chat_history(self):
+        # Keep the system message and the last `self.history_limit` user and assistant messages
+        non_system_messages = [msg for msg in self.chat_history if msg['role'] != 'system']
+        if len(non_system_messages) > self.history_limit:
+            self.chat_history = [self.chat_history[0]] + non_system_messages[-self.history_limit:]
 
     def get_chat_history(self):
         return self.chat_history
 
+    def get_all_chat_history(self):
+        return self.all_chat_history
+
     def clear_chat_history(self):
-        self.chat_history = []
+        self.chat_history = [self.all_chat_history[0]]

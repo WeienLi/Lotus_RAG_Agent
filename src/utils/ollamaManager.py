@@ -14,9 +14,63 @@ from langchain.chains.combine_documents.base import (
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 import queue
 import threading
-from typing import Dict, Any
+from typing import Dict, Any,List
+from langchain_core.documents import Document
+import logging
+logging.basicConfig(filename='retrieved_docs.log', level=logging.INFO)
+from langchain.schema import BaseRetriever
+from pydantic import Field
+from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 
+class CombinedRetriever(BaseRetriever):
+    history_aware_retriever: Any = Field(None)
+    llm: Any = Field(None)
+    db_ret: Any = Field(None)
+    history_template: Any = Field(None)
 
+    def __init__(self, llm, db_ret, history_template):
+        super().__init__()
+        self.llm = llm
+        self.db_ret = db_ret
+        self.history_template = history_template
+        self.history_aware_retriever = create_history_aware_retriever(llm, db_ret, history_template)
+
+    def get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None, **kwargs: Any) -> List[Document]:
+        chat_history = kwargs.get("chat_history", [])
+        
+        inputs = {"input": query, "chat_history": chat_history}
+        
+        db_docs = self.history_aware_retriever.invoke(inputs)
+        
+        model_context = self.generate_model_context(inputs)
+        model_doc = Document(page_content=model_context, metadata={"source": "model_knowledge", 'car_stats': ''})
+        
+        all_docs = [model_doc] + db_docs
+        
+        logging.info("Retrieved Documents:")
+        for idx, doc in enumerate(all_docs):
+            logging.info(f"Document {idx + 1}:")
+            logging.info(f"Source: {doc.metadata.get('source', 'Unknown')}")
+            logging.info(f"Content: {doc.page_content}")
+            logging.info("-" * 50)
+        
+        return all_docs
+
+    def generate_model_context(self, inputs):
+        question = inputs["input"]
+        chat_history = inputs["chat_history"]
+
+        context_prompt = ChatPromptTemplate.from_messages([
+            ("system", """Based on the chat history and your knowledge, provide relevant context or information about the following question. 
+            If you don't have specific information, you can provide general context that might be helpful.
+            Be sure to consider any relevant information from the chat history when providing context."""),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}")
+        ])
+
+        context_chain = context_prompt | self.llm | StrOutputParser()
+        return context_chain.invoke({"question": question, "chat_history": chat_history})
+    
 class ThreadedGenerator:
     def __init__(self):
         self.queue = queue.Queue()
@@ -37,14 +91,6 @@ class ThreadedGenerator:
         self.queue.put(StopIteration)
 
 
-class ChainStreamHandler(StreamingStdOutCallbackHandler):
-    def __init__(self, gen):
-        super().__init__()
-        self.gen = gen
-
-    def on_llm_new_token(self, token: str, **kwargs):
-        self.gen.send(token)
-
 
 class SelectiveStreamHandler(StreamingStdOutCallbackHandler):
     def __init__(self, gen):
@@ -53,14 +99,11 @@ class SelectiveStreamHandler(StreamingStdOutCallbackHandler):
         self.is_qa_chain = False
 
     def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs):
-        # Check if 'context' is in inputs, which should only be true for the QA part
-        # print(inputs)
-        # print(self.is_qa_chain)
         self.is_qa_chain = 'context' in inputs.keys()
 
     def on_llm_new_token(self, token: str, **kwargs):
-        if self.is_qa_chain:
-            self.gen.send(token)
+        #if self.is_qa_chain:
+        self.gen.send(token)
 
 
 def format_document(doc):
@@ -71,7 +114,6 @@ def format_document(doc):
 
 class OllamaManager:
     def __init__(self, config, db_ret):
-        # self.sllm = ChatOllama(model=config['sllm'])
         self.llm = ChatOllama(model=config['llm'])
         self.qa_prompt = self._qa_template()
         self.gen_qa_prompt = self._gen_qa_template()
@@ -93,7 +135,7 @@ class OllamaManager:
             ]
         )
         return contextualize_q_prompt
-
+    
     @staticmethod
     def _qa_template():
         return """You are Colin, an LLM-driven guide for Lotus Starlight Avenue. \
@@ -209,26 +251,21 @@ class OllamaManager:
     def decide_rag_or_general(self, question):
         # return self.if_query_rag(question)
         return "need rag"
-
+    
+    
     def build_chain(self):
-        history_aware_retriever = create_history_aware_retriever(
-            self.llm, self.db_ret, self._history_template()
-        )
+        combined_retriever = CombinedRetriever(self.llm, self.db_ret, self._history_template())
         question_answer_chain = self.create_custom_stuff_documents_chain(self.llm, self.qa_prompt)
-
-        qa_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
-        general_qa_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", self.gen_qa_prompt),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
+        qa_chain = create_retrieval_chain(combined_retriever, question_answer_chain)
+        general_qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", self.gen_qa_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
         general_qa_chain = (
-                RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
-                | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
-                              "rag_or_general": "general"})
+            RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
+            | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
+                        "rag_or_general": "general"})
         )
 
         def decide_and_cache(inputs):
@@ -241,10 +278,10 @@ class OllamaManager:
             general_qa_chain
         )
         final_chain = (
-                RunnablePassthrough().assign(
-                    rag_or_general=decide_and_cache
-                )
-                | branched_chain
+            RunnablePassthrough().assign(
+                rag_or_general=decide_and_cache
+            )
+            | branched_chain
         )
 
         def get_session_history(session_id: str) -> BaseChatMessageHistory:
@@ -259,45 +296,26 @@ class OllamaManager:
             history_messages_key="chat_history",
             output_messages_key="answer",
         )
-
+    
     # def build_chain(self):
     #     history_aware_retriever = create_history_aware_retriever(
     #         self.llm, self.db_ret, self._history_template()
     #     )
+    #     question_answer_chain = self.create_custom_stuff_documents_chain(self.llm, self.qa_prompt)
 
-    #     retrieval_chain = (
-    #         RunnablePassthrough.assign(retrieved_documents=history_aware_retriever)
-    #         | (lambda x: {
-    #             "input": x["input"],
-    #             "chat_history": x["chat_history"],
-    #             "context": DEFAULT_DOCUMENT_SEPARATOR.join(format_document(doc) for doc in x["retrieved_documents"])
-    #         })
-    #     ).with_config(run_name="retrieval_chain")
+    #     qa_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-    #     qa_prompt = ChatPromptTemplate.from_messages([
-    #         ("system", self.qa_prompt),
-    #         MessagesPlaceholder("chat_history"),
-    #         ("human", "{input}"),
-    #     ])
-
-    #     qa_chain = (
-    #         qa_prompt 
-    #         | self.llm 
-    #         | StrOutputParser()
-    #         | (lambda x: {"answer": x, "rag_or_general": "rag"})
-    #     ).with_config(run_name="qa_chain")
-
-    #     combined_chain = retrieval_chain | qa_chain
-
-    #     general_qa_prompt = ChatPromptTemplate.from_messages([
-    #         ("system", self.gen_qa_prompt),
-    #         MessagesPlaceholder("chat_history"),
-    #         ("human", "{input}"),
-    #     ])
+    #     general_qa_prompt = ChatPromptTemplate.from_messages(
+    #         [
+    #             ("system", self.gen_qa_prompt),
+    #             MessagesPlaceholder("chat_history"),
+    #             ("human", "{input}"),
+    #         ]
+    #     )
     #     general_qa_chain = (
-    #         RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
-    #         | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
-    #                     "rag_or_general": "general"})
+    #             RunnablePassthrough.assign(answer=general_qa_prompt | self.llm | StrOutputParser())
+    #             | (lambda x: {"answer": x["answer"], "input": x["input"], "chat_history": x["chat_history"],
+    #                           "rag_or_general": "general"})
     #     )
 
     #     def decide_and_cache(inputs):
@@ -305,15 +323,15 @@ class OllamaManager:
     #         return self.decide_rag_or_general(question)
 
     #     branched_chain = RunnableBranch(
-    #         (lambda x: decide_and_cache(x) == "need rag", combined_chain),
+    #         (lambda x: decide_and_cache(x) == "need rag", qa_chain),
     #         (lambda x: decide_and_cache(x) == "no rag", general_qa_chain),
     #         general_qa_chain
     #     )
     #     final_chain = (
-    #         RunnablePassthrough().assign(
-    #             rag_or_general=decide_and_cache
-    #         )
-    #         | branched_chain
+    #             RunnablePassthrough().assign(
+    #                 rag_or_general=decide_and_cache
+    #             )
+    #             | branched_chain
     #     )
 
     #     def get_session_history(session_id: str) -> BaseChatMessageHistory:
@@ -328,7 +346,7 @@ class OllamaManager:
     #         history_messages_key="chat_history",
     #         output_messages_key="answer",
     #     )
-
+        
     def llm_thread(self, g, query, session_id):
         try:
             selective_handler = SelectiveStreamHandler(g)
@@ -344,23 +362,6 @@ class OllamaManager:
             g.send(("FLAG", res.get("rag_or_general", "unknown")))
         finally:
             g.close()
-
-    # def llm_thread(self, g, query, session_id):
-    #     try:
-    #         streaming_handler = ChainStreamHandler(g)
-    #         #self.llm.callbacks = [streaming_handler]
-
-    #         res = self.rag_chain.invoke(
-    #             {"input": query},
-    #             config={
-    #                 "configurable": {"session_id": session_id},
-    #                 "callbacks": [streaming_handler]
-    #             },
-    #         )
-    #         print(res["answer"])
-    #         g.send(("FLAG", res.get("rag_or_general", "unknown")))
-    #     finally:
-    #         g.close()
 
     def chat(self, query, session_id):
         g = ThreadedGenerator()
