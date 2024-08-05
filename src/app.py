@@ -142,16 +142,16 @@ if __name__ == "__main__":
     logging.info(f"Using model: {model_name}")
     logging.info(f"Streaming model: {smodel_name}")
 
-    try:
-        chroma_manager = ChromaManager(config, 'lotus')
-        chroma_manager.create_collection()
-        db_ret = chroma_manager.get_retriever(k=10, retriever_type="ensemble")
-        ollama_manager = OllamaManager(config, db_ret)
+    #try:
+    chroma_manager = ChromaManager(config, 'lotus')
+    chroma_manager.create_collection()
+    db_ret = chroma_manager.get_retriever(k=5, retriever_type="ensemble")
+    ollama_manager = OllamaManager(config, db_ret)
 
-        warm_up(config)
+    warm_up(config)
 
-        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 6006)))
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 6006)))
 
-    except Exception as e:
-        logging.error(f"An error occurred during initialization: {str(e)}")
-        sys.exit(1)
+    # except Exception as e:
+    #     logging.error(f"An error occurred during initialization: {str(e)}")
+    #     sys.exit(1)

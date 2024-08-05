@@ -12,6 +12,7 @@ from flask_cors import CORS
 from langchain_community.chat_models import ChatOllama
 
 from utils.chromaManager import ChromaManager
+from utils.ollamaManager import OllamaManager
 from utils.apiOllamaManager import ChatManager
 
 os.environ['HF_ENDPOINT'] = os.getenv('HF_ENDPOINT', 'https://hf-mirror.com')
@@ -23,7 +24,8 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)  # 用于Flask session
 CORS(app)
 
-chat_managers = {}  # 存储不同session_id对应的ChatManager实例
+api_chat_managers = {}  # 存储不同session_id对应的ChatManager实例
+langchain_chat_managers = {}
 
 
 def get_rag_content(response):
@@ -101,21 +103,21 @@ def warm_up(config):
         logging.error(f'Warm-up request failed: {str(e)}')
 
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.json
-    question = data.get('question')
-    session_id = session.get('session_id')
-
-    if not question:
-        return GlobalResponseHandler.error(message="Question not provided")
-
-    if not session_id or session_id not in chat_managers:
-        return GlobalResponseHandler.error(message="Session ID not found or Chat Manager not initialized")
-
-    chat_manager = chat_managers[session_id]
-
+@app.route('/api_chat', methods=['POST'])
+def api_chat():
     try:
+        data = request.json
+        question = data.get('question')
+        session_id = session.get('session_id1')
+
+        if not question:
+            return GlobalResponseHandler.error(message="Question not provided")
+
+        if not session_id or session_id not in api_chat_managers:
+            return GlobalResponseHandler.error(message="Session ID not found or Chat Manager not initialized")
+
+        chat_manager = api_chat_managers[session_id]
+
         start_time = time.perf_counter()
 
         def generate_response():
@@ -166,18 +168,76 @@ def chat():
         return GlobalResponseHandler.error(message=str(e))
 
 
+@app.route('/langchain_chat', methods=['POST'])
+def langchain_chat():
+    try:
+        data = request.json
+        question = data.get('question')
+        session_id = session.get('session_id2')
+
+        if not question:
+            return GlobalResponseHandler.error(message="Question not provided")
+
+        if not session_id or session_id not in langchain_chat_managers:
+            return GlobalResponseHandler.error(message="Session ID not found or Chat Manager not initialized")
+
+        ollama_manager = langchain_chat_managers[session_id]
+
+        start_time = time.perf_counter()
+
+        def generate_response():
+            gen = ollama_manager.chat(question, session_id)
+            first_response_time = time.perf_counter()
+            response_time = first_response_time - start_time
+
+            logging.info(f"Time to first response: {response_time:.2f} seconds")
+
+            first_response_logged = False
+            full_response = ""
+            rag_or_general = "unknown"
+
+            for item in gen:
+                if isinstance(item, tuple) and item[0] == "FLAG":
+                    rag_or_general = item[1]
+                else:
+                    full_response += item
+                    json_data = json.dumps({'response': item, 'general_or_rag': rag_or_general})
+                    yield f"data: {json_data}\n\n"
+                    if not first_response_logged:
+                        first_response_logged = True
+                        logging.info(f"First token sent in {response_time:.2f} seconds")
+
+            logging.info(f"Full response: {full_response}")
+            logging.info(f"Flag: {rag_or_general}")
+
+        return Response(stream_with_context(generate_response()), content_type='text/event-stream')
+
+    except Exception as e:
+        logging.error(f"An error occurred in /chat endpoint: {str(e)}")
+        logging.error("".join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+        return GlobalResponseHandler.error(message=str(e))
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     logging.error(f"An unexpected error occurred: {str(e)}")
     return GlobalResponseHandler.error(message="Internal Server Error")
 
 
-@app.route('/test_chat')
-def test_chat():
+@app.route('/test_api_chat')
+def test_api_chat():
     session_id = str(uuid.uuid4())
-    session['session_id'] = session_id
-    chat_managers[session_id] = ChatManager(session_id, base_url, model_name)
-    return render_template('test_chat.html')
+    session['session_id1'] = session_id
+    api_chat_managers[session_id] = ChatManager(session_id, base_url, model_name)
+    return render_template('test_api.html')
+
+
+@app.route('/test_langchain_chat')
+def test_langchain_chat():
+    session_id = str(uuid.uuid4())
+    session['session_id2'] = session_id
+    langchain_chat_managers[session_id] = OllamaManager(config, retrievers[0])
+    return render_template('test_langchain.html')
 
 
 @app.route('/favicon.ico')

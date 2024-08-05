@@ -14,7 +14,7 @@ from langchain.chains.combine_documents.base import (
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 import queue
 import threading
-from typing import Dict, Any,List
+from typing import Dict, Any,List, Optional, Union
 from langchain_core.documents import Document
 import logging
 logging.basicConfig(filename='retrieved_docs.log', level=logging.INFO)
@@ -22,55 +22,94 @@ from langchain.schema import BaseRetriever
 from pydantic import Field
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 
-class CombinedRetriever(BaseRetriever):
-    history_aware_retriever: Any = Field(None)
-    llm: Any = Field(None)
-    db_ret: Any = Field(None)
-    history_template: Any = Field(None)
+# class CombinedRetriever(BaseRetriever):
+#     history_aware_retriever: Any = Field(None)
+#     llm: Any = Field(None)
+#     db_ret: Any = Field(None)
+#     history_template: Any = Field(None)
 
-    def __init__(self, llm, db_ret, history_template):
-        super().__init__()
-        self.llm = llm
-        self.db_ret = db_ret
-        self.history_template = history_template
-        self.history_aware_retriever = create_history_aware_retriever(llm, db_ret, history_template)
+#     def __init__(self, llm, db_ret, history_template):
+#         super().__init__()
+#         self.llm = llm
+#         self.db_ret = db_ret
+#         self.history_template = history_template
+#         self.history_aware_retriever = create_history_aware_retriever(llm, db_ret, history_template)
 
-    def get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None, **kwargs: Any) -> List[Document]:
-        chat_history = kwargs.get("chat_history", [])
+#     def get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None, **kwargs: Any) -> List[Document]:
+#         chat_history = kwargs.get("chat_history", [])
+#         print("HIHIHIHI")
+#         print(chat_history)
+#         print(query)
+#         print(kwargs)
+#         inputs = {"input": query, "chat_history": chat_history}
         
-        inputs = {"input": query, "chat_history": chat_history}
+#         db_docs = self.history_aware_retriever.invoke(inputs)
         
-        db_docs = self.history_aware_retriever.invoke(inputs)
+#         model_context = self.generate_model_context(inputs)
+#         model_doc = Document(page_content=model_context, metadata={"source": "model_knowledge", 'car_stats': ''})
         
-        model_context = self.generate_model_context(inputs)
-        model_doc = Document(page_content=model_context, metadata={"source": "model_knowledge", 'car_stats': ''})
+#         all_docs = [model_doc] + db_docs
         
-        all_docs = [model_doc] + db_docs
+#         logging.info("Retrieved Documents:")
+#         for idx, doc in enumerate(all_docs):
+#             logging.info(f"Document {idx + 1}:")
+#             logging.info(f"Source: {doc.metadata.get('source', 'DB')}")
+#             logging.info(f"Content: {doc.page_content}")
+#             logging.info("-" * 50)
         
-        logging.info("Retrieved Documents:")
-        for idx, doc in enumerate(all_docs):
-            logging.info(f"Document {idx + 1}:")
-            logging.info(f"Source: {doc.metadata.get('source', 'Unknown')}")
-            logging.info(f"Content: {doc.page_content}")
-            logging.info("-" * 50)
-        
-        return all_docs
+#         return all_docs
 
-    def generate_model_context(self, inputs):
-        question = inputs["input"]
-        chat_history = inputs["chat_history"]
+#     def generate_model_context(self, inputs):
+#         question = inputs["input"]
+#         chat_history = inputs["chat_history"]
 
-        context_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Based on the chat history and your knowledge, provide relevant context or information about the following question. 
-            If you don't have specific information, you can provide general context that might be helpful.
-            Be sure to consider any relevant information from the chat history when providing context."""),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}")
-        ])
+#         context_prompt = ChatPromptTemplate.from_messages([
+#             ("system", """Based on the chat history and your knowledge, provide relevant context or information about the following question. 
+#             If you don't have specific information, you can provide general context that might be helpful.
+#             Be sure to consider any relevant information from the chat history when providing context."""),
+#             MessagesPlaceholder(variable_name="chat_history"),
+#             ("human", "{question}")
+#         ])
 
-        context_chain = context_prompt | self.llm | StrOutputParser()
-        return context_chain.invoke({"question": question, "chat_history": chat_history})
+#         context_chain = context_prompt | self.llm | StrOutputParser()
+#         return context_chain.invoke({"question": question, "chat_history": chat_history})
+
+def create_enhanced_history_aware_retriever(
+    llm: Any,
+    retriever: Any,
+    history_prompt: Any,
+    context_prompt: Any
+) -> Any:
+    """Create an enhanced history-aware retriever that also generates context."""
     
+    # Create the history-aware retriever chain
+    history_aware_retriever = RunnableBranch(
+        (
+            lambda x: not x.get("chat_history", False),
+            (lambda x: x["input"]) | retriever,
+        ),
+        history_prompt | llm | StrOutputParser() | retriever,
+    ).with_config(run_name="history_aware_retriever_chain")
+    
+    # Create the model knowledge context chain
+    model_knowledge_chain = (
+        context_prompt 
+        | llm 
+        | StrOutputParser() 
+        | (lambda x: [Document(page_content=x, metadata={"source": "model_knowledge"})])
+    ).with_config(run_name="model_knowledge_chain")
+    
+    # Combine both chains
+    combined_retriever = (
+        RunnablePassthrough().assign(
+            history_docs=history_aware_retriever,
+            model_docs=model_knowledge_chain
+        )
+        | (lambda x: x["history_docs"] + x["model_docs"])
+    ).with_config(run_name="combined_retriever")
+    
+    return combined_retriever
+
 class ThreadedGenerator:
     def __init__(self):
         self.queue = queue.Queue()
@@ -102,8 +141,8 @@ class SelectiveStreamHandler(StreamingStdOutCallbackHandler):
         self.is_qa_chain = 'context' in inputs.keys()
 
     def on_llm_new_token(self, token: str, **kwargs):
-        #if self.is_qa_chain:
-        self.gen.send(token)
+        if self.is_qa_chain:
+            self.gen.send(token)
 
 
 def format_document(doc):
@@ -120,7 +159,17 @@ class OllamaManager:
         self.store = {}
         self.db_ret = db_ret
         self.rag_chain = self.build_chain()
-
+    
+    @staticmethod
+    def _context_prompt():
+        return ChatPromptTemplate.from_messages([
+            ("system", """Based on the chat history and your knowledge, provide relevant context 
+            or information about the following question. If you don't have specific information, 
+            you can provide general context that might be helpful. Your response should be concise 
+            and directly related to the question."""),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
     @staticmethod
     def _history_template():
         contextualize_q_system_prompt = """Given a chat history and the latest user question \
@@ -254,9 +303,14 @@ class OllamaManager:
     
     
     def build_chain(self):
-        combined_retriever = CombinedRetriever(self.llm, self.db_ret, self._history_template())
+        enhanced_retriever = create_enhanced_history_aware_retriever(
+            self.llm, 
+            self.db_ret, 
+            self._history_template(),
+            self._context_prompt()
+        )
         question_answer_chain = self.create_custom_stuff_documents_chain(self.llm, self.qa_prompt)
-        qa_chain = create_retrieval_chain(combined_retriever, question_answer_chain)
+        qa_chain = create_retrieval_chain(enhanced_retriever, question_answer_chain)
         general_qa_prompt = ChatPromptTemplate.from_messages([
             ("system", self.gen_qa_prompt),
             MessagesPlaceholder("chat_history"),
