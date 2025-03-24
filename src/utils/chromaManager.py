@@ -24,6 +24,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 class LineListOutputParser(BaseOutputParser[List[str]]):
+    """
+    A class to prase text output into a list of clean strings, removing numerical prefixes
+
+    Inherit From:
+        Langchain's base parser class for handling structured output
+        
+    Methods:
+        parse(self, text: str):
+            Parses the input text, removes numerical prefixes and return them as a list of strings
+    """
     def parse(self, text: str) -> List[str]:
         lines = text.strip().split("\n")
         lines = [re.sub(r'^\d+\.\s*', '', line).strip() for line in lines]
@@ -31,10 +41,49 @@ class LineListOutputParser(BaseOutputParser[List[str]]):
 
 
 class ChromaManager:
+    """
+    A class use to manage the Chroma Database for storing, retrieving as well as evluating text embeddings
+    
+    Attributes:
+        persist_directory (str): Directory where Chroma database is persisted
+        embeddings_model_name (str): Name of the embedding model for generating embedding
+        collection_name (str): Name of the Chroma database collection
+        batch_size (int): Batch size for inserting to database
+    
+    Methods:
+        create_collection(collection_name=None):
+            Intialize the chroma database collection
+            
+        load_and_store_data(dir_path, ignore_range=False):
+            Loads JSON documents and stores its content in Chroma database
+        
+        insert(documents, metadatas):
+            Inserts new documents into current Chroma database
+            
+        remove_all():
+            Deletes all documents in the Chroma collection
+        
+        check_db():
+            Check the number of documents within the current database
+        
+        get_retriever(k=5, retriever_type="chroma"):
+            Returns a retriever based on retrieval strategy
+        
+        evaluate_retrieval(queries, top_k=5, retriever_type="chroma", save=False):
+            Evaluates retrieval accuracy using a set of queries
+            
+    """
     def __init__(self, config, collection_name):
+        """
+        Initializes a ChromaManager instance with configuration settings
+
+        Args:
+            config (dict): dictionary containing configuration startegy
+            collection_name (str): Name of the Chroma database collection
+        """
         self.persist_directory = config['persist_directory']
         self.embeddings_model_name = config['embeddings_model_name']
-        self.llm = ChatOllama(model=config['llm'])
+        #self.llm = ChatOllama(model=config['llm'])
         self.collection_name = collection_name
         self.batch_size = 5
         try:
@@ -46,6 +95,12 @@ class ChromaManager:
             logging.error(f"Failed to load embedding model: {e}")
 
     def create_collection(self, collection_name=None):
+        """
+        Intialize the chroma database collection
+
+        Args:
+            collection_name (str, optional): Name of the Chroma database collection Defaults to None
+        """
         if collection_name is not None:
             self.collection_name = collection_name
 
@@ -59,6 +114,13 @@ class ChromaManager:
         )
 
     def load_and_store_data(self, dir_path, ignore_range=False):
+        """
+        Loads JSON documents and stores its content in Chroma database
+
+        Args:
+            dir_path (str): Path to the directory containing JSON files we want to load
+            ignore_range (bool, optional): If True, ignores page range constraints Defaults to False
+        """
         content_list = []
         metadata_list = []
         global_id = 0
@@ -101,6 +163,13 @@ class ChromaManager:
         logging.info(f"There are {self.chroma_db._collection.count()} in the {self.collection_name} collection")
 
     def insert(self, documents, metadatas):
+        """
+        Inserts new documents into current Chroma database
+
+        Args:
+            documents (List[str]): Documents we want to add into the Chroma database
+            metadatas (List[dict]): Document's metadata
+        """
         embeddings_list = self.embeddings.embed_documents(documents)
         for content, embedding, metadata, doc_id in zip(documents, embeddings_list, metadatas):
             self.chroma_db.add_texts([content], embeddings=[embedding], metadatas=[metadata], ids=[metadata['id']])
@@ -108,6 +177,9 @@ class ChromaManager:
         logging.info("New documents inserted successfully.")
 
     def remove_all(self):
+        """
+        Deletes all documents in the Chroma collection
+        """
         try:
             self.chroma_db.delete_collection()
             logging.info(f"Successful to remove documents from the collection '{self.collection_name}'")
@@ -115,9 +187,22 @@ class ChromaManager:
             logging.error(f"Failed to remove documents from the collection '{self.collection_name}': {e}")
 
     def check_db(self):
+        """
+        Check the number of documents within the current database
+        """
         logging.info(f"There are {self.chroma_db._collection.count()} in the {self.collection_name} collection")
 
     def get_retriever(self, k=5, retriever_type="chroma"):
+        """
+        Returns a retriever based on retrieval strategy
+
+        Args:
+            k (int, optional): Number closest documents we want to retrieve Defaults to 5
+            retriever_type (str, optional): retriever strategy we want to use Defaults to "chroma"
+
+        Returns:
+            BaseRetriever: Selected Retriever
+        """
         chroma_docs = self.chroma_db.get()
         documents = [Document(page_content=doc, metadata=metadata)
                      for doc, metadata in zip(chroma_docs['documents'], chroma_docs['metadatas'])]
@@ -148,6 +233,18 @@ class ChromaManager:
             return retriever
 
     def evaluate_retrieval(self, queries, top_k=5, retriever_type="chroma", save=False):
+        """
+        Evaluates the retrieval accuracy of the retriever strategy.
+        
+        Args:
+            queries (list[dict]): Query we want to use to retrieve alongside the right page_number, id and right file
+            top_k (int, optional): Number closest documents we want to retrieve Defaults to 5 Defaults to 5
+            retriever_type (str, optional): retriever strategy we want to use Defaults to "chroma"
+            save (bool, optional): Options on whether we want to save the results in json format Defaults to False
+
+        Returns:
+            float: The retrieval accuracy as a ratio of correctly retrieved IDs divided by total queries
+        """
         total_queries = len(queries)
         score = 0.0
         id_match_num = 0

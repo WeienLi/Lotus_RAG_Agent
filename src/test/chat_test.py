@@ -10,6 +10,15 @@ from utils.chromaManager import ChromaManager
 
 
 def get_rag_content(response):
+    """
+    Extracts content from documents retrieved and reformat it
+
+    Args:
+        response (list): A list of document objects
+
+    Returns:
+        str: A formatted string containing extracted text follow by car stats.
+    """
     rag_content = ""
     for i, doc in enumerate(response):
         page_content = doc.page_content.replace('\n', '')
@@ -28,11 +37,28 @@ def get_rag_content(response):
 
 
 def load_config(config_path):
+    """Safely Load the YAML configuration file
+
+    Args:
+        config_path (str): The Path towards the yaml configuration File
+
+    Returns:
+        Dict: Parsed YAML content as a Dictionary.
+    """
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
 
 def test_chat_manager(config, session_id, retrievers):
+    """
+    Interactive commandline input that can be used to chat with the AI Agent implemented with ChatManager of apiOllamaManager to test the functionality and performance of the agent.
+
+    Args:
+        config (dict): Configuration dictionary
+        session_id (str): Session identifier for the chat session
+        retrievers (list): A list of retriever objects used for RAG-based query retrieval
+    """
+    
     base_url = config['ollama_base_url']
     model_name = config['llm']
 

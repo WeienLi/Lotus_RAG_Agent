@@ -1,0 +1,4 @@
+collection_name : "test"
+embeddings_model_name : "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+persist_directory: "./prototype_reference/databse"
+data_path: "./data/intermediate_data/car_stats_data/split_car_stats.json"

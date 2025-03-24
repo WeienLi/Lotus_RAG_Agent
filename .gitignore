@@ -133,3 +133,9 @@ dmypy.json
 # Additional
 #data
 #config
+
+data/final_data/
+data/intermediate_data/
+data/test_data/
+
+!data/*.py

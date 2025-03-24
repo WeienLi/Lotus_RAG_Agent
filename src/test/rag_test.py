@@ -11,11 +11,28 @@ from utils.ollamaManager import OllamaManager
 
 
 def load_config(config_path):
+    """Safely Load the YAML configuration file
+
+    Args:
+        config_path (str): The Path towards the yaml configuration File
+
+    Returns:
+        Dict: Parsed YAML content as a Dictionary.
+    """
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
 
 def test_retrieval_acc(config, collection_name, test_directory='../Data/test_data', k=10):
+    """
+    Evaluates the retrieval accuracy of a Chroma database on test queries
+
+    Args:
+        config (dict): Configuration dictionary
+        collection_name (str): The name of the collection to retrieve data from
+        test_directory (str, optional): Directory path containing test queries in JSON files Defaults to '../Data/test_data'
+        k (int, optional): The number of top documents we want to retrieve for evaluation Defaults to 10
+    """
     manager = ChromaManager(config, collection_name)
     manager.create_collection()
 
@@ -32,6 +49,14 @@ def test_retrieval_acc(config, collection_name, test_directory='../Data/test_dat
 
 
 def test_if_query_rag(config, collection_name, test_directory):
+    """
+    Tests how well we can evaluate whether a query should use RAG.
+
+    Args:
+        config (dict): Configuration dictionary
+        collection_name (str): The name of the collection to retrieve data from
+        test_directory (str, optional): Directory path containing test queries in JSON files
+    """
     chroma_manager = ChromaManager(config, collection_name)
     chroma_manager.create_collection()
     db_ret = chroma_manager.get_db_as_ret(search_kwargs={"k": 10})

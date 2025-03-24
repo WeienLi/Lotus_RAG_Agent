@@ -1,4 +1,11 @@
 def decode_unicode_file(input_file_path, output_file_path):
+    """
+    Decodes a Unicode-escaped JSON file and writes the readable content to a new file
+
+    Args:
+        input_file_path (str): Path to the input file containing Unicode-escaped content
+        output_file_path (str): Path to the output file where decoded content will be saved
+    """
     try:
         with open(input_file_path, 'r', encoding='utf-8') as input_file:
             content = input_file.read()

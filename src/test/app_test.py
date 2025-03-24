@@ -4,6 +4,13 @@ import sys
 
 
 def stream_chat(prompt, url):
+    """
+    Streams the chat response from a given URL for a given prompt
+
+    Args:
+        prompt (str): The query to be sent to the server
+        url (str): The endpoint URL for the chat API
+    """
     headers = {
         'Content-Type': 'application/json'
     }
@@ -35,6 +42,11 @@ def stream_chat(prompt, url):
 
 
 def test_chat(url):
+    """
+    Interactive commandline input that can be used to chat with the AI Agent via the API to test the functionality and performance of the agent. (Can be use for both app)
+    Args:
+        url (str): The API endpoint for chat interaction.
+    """
     while True:
         prompt = input("Enter your question (or exit): ")
         if prompt.lower() == "exit":

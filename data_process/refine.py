@@ -5,6 +5,18 @@ from openai import OpenAI
 from tqdm import tqdm
 
 def refine_content_with_kimi(content, api_key):
+    """
+    Refines text content using the Moonshot AI API to refine the content
+
+    Args:
+        content (str): The raw text content to be refined
+        api_key (str): The API key required for authenticating with the Moonshot AI service
+
+    Returns:
+        str | None: The refined text without special characters in string
+                    Returns None if an error occurs during the API call
+    """
+    
     client = OpenAI(
         api_key=api_key,
         base_url='https://api.moonshot.cn/v1',
@@ -50,6 +62,16 @@ def refine_content_with_kimi(content, api_key):
                 return None
 
 def process_chunks(input_file, output_file, start, end, api_key):
+    """
+    Processes a subset of JSON data, refines the content using the Moonshot AI API then saves the cleaned data to an output file
+
+    Args:
+        input_file (str): Path to the JSON file containing the data.
+        output_file (str): Path to save the refined JSON output.
+        start (int): The starting index of JSON data
+        end (int): The ending index of JSON data
+        api_key (str): API key for authenticating with the Moonshot AI service.
+    """
     with open(input_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -93,7 +115,6 @@ def process_chunks(input_file, output_file, start, end, api_key):
                 print("No refined data returned from the API. Retrying...")
                 time.sleep(10)  # Sleep for 10 seconds before retrying
 
-    # Save the refined chunks
     if refined_chunks:
         final_output = json.dumps(refined_chunks, ensure_ascii=False, indent=4)
         with open(output_file, 'w', encoding='utf-8') as f:

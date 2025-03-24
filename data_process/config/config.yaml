@@ -1,0 +1,11 @@
+car_stats_pdf: "./data/Lotus The Marques.pdf"
+output_dir : "./data"
+output_filename : "car_stats.json"
+lotus_tech_pdf: "./data/LotusTech-F-4A_2023_12_05.pdf"
+output_tech: "LotusTech-F-4A_2023_12_05.json"
+tech_start : 275
+tech_end : 352
+lotus_20f_pdf : "./data/20-F.pdf"
+output_20f : "20-F.json"
+20f_start : 76
+20f_end : 123

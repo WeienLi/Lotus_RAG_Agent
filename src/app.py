@@ -23,16 +23,53 @@ CORS(app)
 
 
 class GlobalResponseHandler:
+    """
+    A global reponse handler for formatting API responses
+    """
     @staticmethod
     def success(data=None, message="Success", status_code=200, response_time=None):
+        """Returns a success response
+
+        Args:
+            data (_type_, optional): Response Data. Defaults to None
+            message (str, optional): Response Message. Defaults to "Success"
+            status_code (int, optional): HTTP status code. Defaults to 200
+            response_time (_type_, optional): Time it took for the response. Defaults to None
+
+        Returns:
+           Response: A Flask Response object containing the JSON response
+        """
         return GlobalResponseHandler._create_response("success", message, data, status_code, response_time)
 
     @staticmethod
     def error(message="An error occurred", data=None, status_code=400, response_time=None):
+        """Returns a error response
+
+        Args:
+            message (str, optional): Error Message. Defaults to "An error occurred"
+            data (_type_, optional): Response Data. Defaults to None
+            status_code (int, optional): HTTP status code. Defaults to 400
+            response_time (_type_, optional): Time it took for the response. Defaults to None
+
+        Returns:
+            Response: A Flask Response object containing the JSON response
+        """
         return GlobalResponseHandler._create_response("error", message, data, status_code, response_time)
 
     @staticmethod
     def _create_response(status, message, data, status_code, response_time):
+        """Helper function that creates a JSON response object.
+
+        Args:
+            status (str): The status of the response
+            message (str): The response message
+            data (any): The response data
+            status_code (int): The HTTP status code
+            response_time (float, optional): The time taken to generate the response 
+
+        Returns:
+            Response: A Flask Response object containing the JSON response
+        """
         response = {
             "status": status,
             "message": message,
@@ -44,15 +81,39 @@ class GlobalResponseHandler:
 
     @staticmethod
     def stream_response(generate_func):
+        """Streams a response using the provided generator function
+
+        Args:
+            generate_func (function): A generator function that yields response data
+
+        Returns:
+            Response: A Flask Response object with a streamed response
+        """
         return Response(stream_with_context(generate_func()), content_type='text/event-stream')
 
 
 def load_config(config_path):
+    """Safely Load the YAML configuration file
+
+    Args:
+        config_path (str): The Path towards the yaml configuration File
+
+    Returns:
+        Dict: Parsed YAML content as a Dictionary.
+    """
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
 
 def timing_decorator(func):
+    """A decorator that logs the execution time of the wrapped function
+
+    Args:
+        func (function): The function to be wrapped.
+
+    Returns:
+        function: The wrapped function with timing logging
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
@@ -69,6 +130,11 @@ def timing_decorator(func):
 
 @timing_decorator
 def warm_up(config):
+    """Warms up the language model by invoking it with a sample input
+
+    Args:
+        config (dict): The configuration dictionary containing model settings
+    """
     try:
         llm = ChatOllama(model=config['llm'])
         llm.invoke("Warm up")
@@ -80,6 +146,12 @@ def warm_up(config):
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    """
+    Handles chat requests by streaming responses from the OllamaManager model
+
+    Returns:
+        Response: A Flask streamed JSON response object containing the model's replies
+    """
     data = request.json
     question = data.get('question')
 
@@ -125,6 +197,15 @@ def chat():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    """
+    Handles unexpected exceptions and returns a generic error response
+
+    Args:
+        e (Exception): The exception that occurred
+
+    Returns:
+        Response: A Flask Response object for standarized error response
+    """
     logging.error(f"An unexpected error occurred: {str(e)}")
     return GlobalResponseHandler.error(message="Internal Server Error")
 
@@ -134,13 +215,13 @@ if __name__ == "__main__":
     config = load_config(config_path)
 
     model_name = config.get('llm')
-    smodel_name = config.get('sllm')
+    #smodel_name = config.get('sllm')
     if not model_name:
         logging.error("LLM model name is not configured.")
         sys.exit(1)
 
     logging.info(f"Using model: {model_name}")
-    logging.info(f"Streaming model: {smodel_name}")
+    #logging.info(f"Streaming model: {smodel_name}")
 
     #try:
     chroma_manager = ChromaManager(config, 'lotus')

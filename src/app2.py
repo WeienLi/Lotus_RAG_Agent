@@ -21,14 +21,22 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'u
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # 用于Flask session
+app.secret_key = os.urandom(24)  # For Flask session
 CORS(app)
 
-api_chat_managers = {}  # 存储不同session_id对应的ChatManager实例
-langchain_chat_managers = {}
+api_chat_managers = {}  # Save different session_id as key for different ChatManager instance as value
+langchain_chat_managers = {} # Save different session_id as key for different OllamaManager instance as value
 
 
 def get_rag_content(response):
+    """Extracts content from documents retrieved and reformat it
+
+    Args:
+        response (list): A list of document objects
+
+    Returns:
+        str: A formatted string containing extracted text follow by car stats.
+    """
     rag_content = ""
     for i, doc in enumerate(response):
         page_content = doc.page_content.replace('\n', '')
@@ -47,16 +55,53 @@ def get_rag_content(response):
 
 
 class GlobalResponseHandler:
+    """
+    A global reponse handler for formatting API responses
+    """
     @staticmethod
     def success(data=None, message="Success", status_code=200, response_time=None):
+        """Returns a success response
+
+        Args:
+            data (_type_, optional): Response Data. Defaults to None
+            message (str, optional): Response Message. Defaults to "Success"
+            status_code (int, optional): HTTP status code. Defaults to 200
+            response_time (_type_, optional): Time it took for the response. Defaults to None
+
+        Returns:
+           Response: A Flask Response object containing the JSON response
+        """
         return GlobalResponseHandler._create_response("success", message, data, status_code, response_time)
 
     @staticmethod
     def error(message="An error occurred", data=None, status_code=400, response_time=None):
+        """Returns a error response
+
+        Args:
+            message (str, optional): Error Message. Defaults to "An error occurred"
+            data (_type_, optional): Response Data. Defaults to None
+            status_code (int, optional): HTTP status code. Defaults to 400
+            response_time (_type_, optional): Time it took for the response. Defaults to None
+
+        Returns:
+            Response: A Flask Response object containing the JSON response
+        """
         return GlobalResponseHandler._create_response("error", message, data, status_code, response_time)
 
     @staticmethod
     def _create_response(status, message, data, status_code, response_time):
+        """Helper function that creates a JSON response object.
+
+        Args:
+            status (str): The status of the response
+            message (str): The response message
+            data (any): The response data
+            status_code (int): The HTTP status code
+            response_time (float, optional): The time taken to generate the response 
+
+        Returns:
+            Response: A Flask Response object containing the JSON response
+        """
         response = {
             "status": status,
             "message": message,
@@ -68,15 +113,39 @@ class GlobalResponseHandler:
 
     @staticmethod
     def stream_response(generate_func):
+        """Streams a response using the provided generator function
+
+        Args:
+            generate_func (function): A generator function that yields response data
+
+        Returns:
+            Response: A Flask Response object with a streamed response
+        """
         return Response(stream_with_context(generate_func()), content_type='text/event-stream')
 
 
 def load_config(config_path):
+    """Safely Load the YAML configuration file
+
+    Args:
+        config_path (str): The Path towards the yaml configuration File
+
+    Returns:
+        Dict: Parsed YAML content as a Dictionary.
+    """
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
 
 def timing_decorator(func):
+    """A decorator that logs the execution time of the wrapped function
+
+    Args:
+        func (function): The function to be wrapped.
+
+    Returns:
+        function: The wrapped function with timing logging
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
@@ -93,6 +162,11 @@ def timing_decorator(func):
 
 @timing_decorator
 def warm_up(config):
+    """Warms up the language model by invoking it with a sample input
+
+    Args:
+        config (dict): The configuration dictionary containing model settings
+    """
     logging.info("Starting warm up")
     try:
         llm = ChatOllama(model=config['llm'])
@@ -103,8 +177,14 @@ def warm_up(config):
         logging.error(f'Warm-up request failed: {str(e)}')
 
 
-@app.route('/api_chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def api_chat():
+    """
+    Utilizing the Ollama API chat manager developed to handle chat requested. Use RAG if classified as needed. (apiOllamaManager)
+
+    Returns:
+        Response: A streamed response containing chat messages
+    """
     try:
         data = request.json
         question = data.get('question')
@@ -170,6 +250,13 @@ def api_chat():
 
 @app.route('/langchain_chat', methods=['POST'])
 def langchain_chat():
+    """
+     Utilizing the Langchain chat manager developed to handle chat requested. (ollamaManager)
+
+    Returns:
+        Response: A streamed response containing chat messages
+
+    """
     try:
         data = request.json
         question = data.get('question')
@@ -220,12 +307,27 @@ def langchain_chat():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    """
+    Handles unexpected exceptions and returns a generic error response
+
+    Args:
+        e (Exception): The exception that occurred
+
+    Returns:
+        Response: A Flask Response object for standarized error response
+    """
     logging.error(f"An unexpected error occurred: {str(e)}")
     return GlobalResponseHandler.error(message="Internal Server Error")
 
 
 @app.route('/test_api_chat')
 def test_api_chat():
+    """
+     Initializes a test session for Ollama API chat manager and renders the test interface (apiOllamaManager)
+
+    Returns:
+        Response: Renders the `test_api.html` template for testing API chat
+    """
     session_id = str(uuid.uuid4())
     session['session_id1'] = session_id
     api_chat_managers[session_id] = ChatManager(session_id, base_url, model_name)
@@ -234,14 +336,27 @@ def test_api_chat():
 
 @app.route('/test_langchain_chat')
 def test_langchain_chat():
+    """
+    Initializes a test session for LangChain chat manager and renders the test interface. (ollamaManager)
+    
+    Returns:
+        Response: Renders the `test_langchain.html` template for testing LangChain chat.
+    """
     session_id = str(uuid.uuid4())
     session['session_id2'] = session_id
+    # Use retrievers[0] since we found that lotus the combined collections perform the best.
     langchain_chat_managers[session_id] = OllamaManager(config, retrievers[0])
     return render_template('test_langchain.html')
 
 
 @app.route('/favicon.ico')
 def favicon():
+    """
+    Handles requests for the favicon to prevent unnecessary 404 errors.
+        
+    Returns:
+        Response: An empty response with HTTP status code 204 (No Content).
+    """
     return '', 204
 
 
@@ -256,8 +371,9 @@ if __name__ == "__main__":
 
     logging.info(f"Using model: {model_name}, URL: {base_url}")
 
-    # create retrievers
+    #Which collections we want to use and how much we want to extract (The current values set is the best we found by expriment)
     collections = {'lotus': 10, 'lotus_car_stats': 0, 'lotus_brand_info': 0}
+    #List of retrievers
     retrievers = []
     for collection, top_k in collections.items():
         if top_k <= 0:
